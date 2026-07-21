@@ -6,14 +6,17 @@ import helmet from 'helmet';
 import { join } from 'path';
 import { AppModule } from './app.module';
 import { ApiExceptionFilter } from './common/filters/api-exception.filter';
+import { parseCorsOrigins } from './config/env.utils';
 import { PROFILE_PHOTO_UPLOAD_ROUTE } from './users/profile-photo-storage.service';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { rawBody: true });
-  const configuredOrigins = (process.env.CORS_ORIGIN ?? '')
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+  const environment = process.env.NODE_ENV ?? 'development';
+  const isProduction = environment === 'production';
+  const app = await NestFactory.create(AppModule, {
+    rawBody: true,
+    logger: isProduction ? ['error', 'warn'] : ['error', 'warn', 'log'],
+  });
+  const configuredOrigins = parseCorsOrigins(process.env.CORS_ORIGIN);
 
   app.use(helmet());
   app.use(
@@ -30,8 +33,17 @@ async function bootstrap() {
     origin:
       configuredOrigins.length > 0
         ? configuredOrigins
-        : process.env.NODE_ENV !== 'production',
+        : isProduction
+          ? false
+          : true,
     credentials: configuredOrigins.length > 0,
+    allowedHeaders: [
+      'Authorization',
+      'Content-Type',
+      'Idempotency-Key',
+      'X-Idempotency-Key',
+    ],
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });
   app.setGlobalPrefix('api');
   app.useGlobalFilters(new ApiExceptionFilter());
@@ -58,7 +70,10 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api/docs', app, document);
 
-  const port = Number(process.env.PORT ?? 3000);
+  const port = Number(process.env.PORT || 3001);
   await app.listen(port, '0.0.0.0');
+  console.log(
+    `food-app-backend started environment=${environment} port=${port}`,
+  );
 }
 void bootstrap();

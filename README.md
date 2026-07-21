@@ -31,6 +31,90 @@
 $ npm install
 ```
 
+## Local development
+
+Create `.env` from `.env.example`, then set your local PostgreSQL, Firebase,
+and Razorpay values. Local development defaults to port `3001`.
+
+```bash
+npm install
+npm run start:dev
+```
+
+The backend listens on `0.0.0.0` and exposes Swagger at:
+
+```text
+http://localhost:3001/api/docs
+```
+
+## Production build
+
+```bash
+npm run build
+npm run start:prod
+```
+
+## Health checks
+
+Render and uptime probes can use:
+
+```text
+GET /api/health
+GET /api/health/ready
+```
+
+The health response verifies database connectivity with a lightweight query and
+does not expose database credentials or connection details.
+
+## Render deployment
+
+Recommended Render settings:
+
+- Region: Singapore
+- Runtime: Node
+- Branch: main
+- Root Directory: empty
+- Build Command: `npm ci && npm run build`
+- Start Command: `npm run start:prod`
+- Health Check Path: `/api/health`
+- Instance: Free for testing
+
+Render supplies `PORT`, so do not set it manually in production.
+
+Required Render environment variables:
+
+```bash
+NODE_ENV=production
+DATABASE_URL=<Neon PostgreSQL connection string>
+DB_SSL=true
+DB_SSL_REJECT_UNAUTHORIZED=false
+FIREBASE_SERVICE_ACCOUNT_PATH=/etc/secrets/firebase-service-account.json
+RAZORPAY_KEY_ID=<Razorpay key ID>
+RAZORPAY_KEY_SECRET=<Razorpay key secret>
+RAZORPAY_WEBHOOK_SECRET=<Razorpay webhook secret>
+CORS_ORIGIN=
+STORAGE_DRIVER=local
+```
+
+For Firebase Admin on Render, add a Secret File:
+
+- Filename: `firebase-service-account.json`
+- Contents: complete Firebase service account JSON
+- Runtime path: `/etc/secrets/firebase-service-account.json`
+
+Neon is configured through `DATABASE_URL`; TypeORM `synchronize` remains
+disabled, and schema changes continue to use migrations.
+
+Deploy updates with:
+
+```bash
+git add .
+git commit -m "Update backend"
+git push origin main
+```
+
+Render can redeploy automatically from the connected `main` branch.
+
 ## Dine-In Razorpay configuration
 
 Module 14 uses Razorpay Standard Checkout for Dine-In UPI and card payments.

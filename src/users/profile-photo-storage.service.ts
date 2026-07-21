@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { mkdir, unlink, writeFile } from 'fs/promises';
 import { extname, join } from 'path';
@@ -19,33 +25,42 @@ const MIME_EXTENSION_MAP = new Map<string, string>([
   ['image/webp', '.webp'],
 ]);
 
+type StorageDriver = 'local' | 'cloudinary';
+
+interface ProfilePhotoObjectStorage {
+  save(file: UploadedProfilePhoto, extension: string): Promise<string>;
+  delete(profileImage: string | null): Promise<void>;
+}
+
 @Injectable()
 export class ProfilePhotoStorageService {
+  private readonly logger = new Logger(ProfilePhotoStorageService.name);
   private readonly uploadDir = join(process.cwd(), 'uploads', 'profile-photos');
+  private readonly provider: ProfilePhotoObjectStorage;
+
+  constructor(private readonly configService?: ConfigService) {
+    const driver = this.storageDriver();
+    this.provider =
+      driver === 'cloudinary'
+        ? new CloudinaryProfilePhotoStorageProvider()
+        : new LocalProfilePhotoStorageProvider(this.uploadDir);
+
+    if (process.env.NODE_ENV === 'production' && driver === 'local') {
+      this.logger.warn(
+        'STORAGE_DRIVER=local is not persistent on Render free instances. Use object storage for production profile photos.',
+      );
+    }
+  }
 
   async saveProfilePhoto(file: UploadedProfilePhoto): Promise<string> {
     this.validate(file);
 
-    await mkdir(this.uploadDir, { recursive: true });
     const extension = MIME_EXTENSION_MAP.get(file.mimetype) ?? '.jpg';
-    const fileName = `${randomUUID()}${extension}`;
-    const filePath = join(this.uploadDir, fileName);
-
-    await writeFile(filePath, file.buffer, { flag: 'wx' });
-    return `${PROFILE_PHOTO_UPLOAD_ROUTE}/${fileName}`;
+    return this.provider.save(file, extension);
   }
 
   async deleteProfilePhoto(profileImage: string | null): Promise<void> {
-    const fileName = this.localProfilePhotoFileName(profileImage);
-    if (!fileName) return;
-
-    try {
-      await unlink(join(this.uploadDir, fileName));
-    } catch (error) {
-      if (!this.isMissingFileError(error)) {
-        throw error;
-      }
-    }
+    await this.provider.delete(profileImage);
   }
 
   private validate(file: UploadedProfilePhoto): void {
@@ -74,6 +89,42 @@ export class ProfilePhotoStorageService {
     }
   }
 
+  private storageDriver(): StorageDriver {
+    const driver =
+      this.configService?.get<string>('STORAGE_DRIVER') ??
+      process.env.STORAGE_DRIVER ??
+      'local';
+    return driver.trim().toLowerCase() === 'cloudinary'
+      ? 'cloudinary'
+      : 'local';
+  }
+}
+
+class LocalProfilePhotoStorageProvider implements ProfilePhotoObjectStorage {
+  constructor(private readonly uploadDir: string) {}
+
+  async save(file: UploadedProfilePhoto, extension: string): Promise<string> {
+    await mkdir(this.uploadDir, { recursive: true });
+    const fileName = `${randomUUID()}${extension}`;
+    const filePath = join(this.uploadDir, fileName);
+
+    await writeFile(filePath, file.buffer, { flag: 'wx' });
+    return `${PROFILE_PHOTO_UPLOAD_ROUTE}/${fileName}`;
+  }
+
+  async delete(profileImage: string | null): Promise<void> {
+    const fileName = this.localProfilePhotoFileName(profileImage);
+    if (!fileName) return;
+
+    try {
+      await unlink(join(this.uploadDir, fileName));
+    } catch (error) {
+      if (!this.isMissingFileError(error)) {
+        throw error;
+      }
+    }
+  }
+
   private localProfilePhotoFileName(
     profileImage: string | null,
   ): string | null {
@@ -95,5 +146,19 @@ export class ProfilePhotoStorageService {
       'code' in error &&
       error.code === 'ENOENT'
     );
+  }
+}
+
+class CloudinaryProfilePhotoStorageProvider implements ProfilePhotoObjectStorage {
+  save(): Promise<string> {
+    return Promise.reject(
+      new ServiceUnavailableException(
+        'Cloudinary profile-photo storage is not configured yet. Set STORAGE_DRIVER=local or add a Cloudinary implementation.',
+      ),
+    );
+  }
+
+  delete(): Promise<void> {
+    return Promise.resolve();
   }
 }

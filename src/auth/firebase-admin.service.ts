@@ -15,6 +15,14 @@ import { getAuth, type DecodedIdToken } from 'firebase-admin/auth';
 import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
 
+type RawFirebaseServiceAccount = {
+  project_id?: unknown;
+  client_email?: unknown;
+  private_key?: unknown;
+};
+
+const RENDER_SECRET_DIR = resolve('/etc/secrets');
+
 @Injectable()
 export class FirebaseAdminService implements OnModuleInit {
   private app!: App;
@@ -42,13 +50,17 @@ export class FirebaseAdminService implements OnModuleInit {
   }
 
   private initialize(): void {
+    if (getApps().length > 0) {
+      this.app = getApps()[0]!;
+      return;
+    }
+
     const serviceAccount = this.loadServiceAccount();
 
-    this.app =
-      getApps()[0] ?? initializeApp({ credential: cert(serviceAccount) });
+    this.app = initializeApp({ credential: cert(serviceAccount) });
   }
 
-  private loadServiceAccount(): ServiceAccount {
+  loadServiceAccount(): ServiceAccount {
     const serviceAccountJson = this.configService.get<string>(
       'FIREBASE_SERVICE_ACCOUNT_JSON',
     );
@@ -56,33 +68,16 @@ export class FirebaseAdminService implements OnModuleInit {
       return this.parseServiceAccountJson(serviceAccountJson);
     }
 
-    const serviceAccountBase64 = this.configService.get<string>(
-      'FIREBASE_SERVICE_ACCOUNT_BASE64',
-    );
-    if (serviceAccountBase64?.trim()) {
-      return this.parseServiceAccountJson(
-        Buffer.from(serviceAccountBase64.trim(), 'base64').toString('utf8'),
-      );
-    }
-
     const serviceAccountPath = this.configService.get<string>(
       'FIREBASE_SERVICE_ACCOUNT_PATH',
     );
     if (!serviceAccountPath) {
       throw new Error(
-        'Firebase Admin credentials are required. Set FIREBASE_SERVICE_ACCOUNT_PATH, FIREBASE_SERVICE_ACCOUNT_JSON, or FIREBASE_SERVICE_ACCOUNT_BASE64.',
+        'Firebase Admin credentials are required. Set FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_SERVICE_ACCOUNT_PATH.',
       );
     }
 
-    const projectRoot = resolve(process.cwd());
-    const resolvedPath = resolve(projectRoot, serviceAccountPath);
-    const pathFromRoot = relative(projectRoot, resolvedPath);
-
-    if (pathFromRoot.startsWith('..') || isAbsolute(pathFromRoot)) {
-      throw new Error(
-        'FIREBASE_SERVICE_ACCOUNT_PATH must resolve inside the project root.',
-      );
-    }
+    const resolvedPath = this.resolveServiceAccountPath(serviceAccountPath);
 
     if (!existsSync(resolvedPath)) {
       throw new Error('The Firebase service-account file could not be found.');
@@ -95,15 +90,61 @@ export class FirebaseAdminService implements OnModuleInit {
     }
   }
 
-  private parseServiceAccountJson(value: string): ServiceAccount {
-    try {
-      const parsed = JSON.parse(value) as ServiceAccount;
-      if (typeof parsed.privateKey === 'string') {
-        parsed.privateKey = parsed.privateKey.replace(/\\n/g, '\n');
+  resolveServiceAccountPath(value: string): string {
+    const trimmed = value.trim();
+    const resolvedPath = isAbsolute(trimmed)
+      ? resolve(trimmed)
+      : resolve(process.cwd(), trimmed);
+
+    if (isAbsolute(trimmed)) {
+      const pathFromRenderSecrets = relative(RENDER_SECRET_DIR, resolvedPath);
+      const isRenderSecretPath =
+        !pathFromRenderSecrets.startsWith('..') &&
+        !isAbsolute(pathFromRenderSecrets);
+      if (!isRenderSecretPath) {
+        throw new Error(
+          'FIREBASE_SERVICE_ACCOUNT_PATH absolute paths must resolve inside /etc/secrets.',
+        );
       }
-      return parsed;
+      return resolvedPath;
+    }
+
+    const projectRoot = resolve(process.cwd());
+    const pathFromRoot = relative(projectRoot, resolvedPath);
+    if (pathFromRoot.startsWith('..') || isAbsolute(pathFromRoot)) {
+      throw new Error(
+        'FIREBASE_SERVICE_ACCOUNT_PATH must resolve inside the project root.',
+      );
+    }
+
+    return resolvedPath;
+  }
+
+  private parseServiceAccountJson(value: string): ServiceAccount {
+    let parsed: RawFirebaseServiceAccount;
+    try {
+      parsed = JSON.parse(value) as RawFirebaseServiceAccount;
     } catch {
       throw new Error('Firebase service-account credentials are invalid JSON.');
     }
+
+    if (
+      typeof parsed.project_id !== 'string' ||
+      !parsed.project_id.trim() ||
+      typeof parsed.client_email !== 'string' ||
+      !parsed.client_email.trim() ||
+      typeof parsed.private_key !== 'string' ||
+      !parsed.private_key.trim()
+    ) {
+      throw new Error(
+        'Firebase service-account credentials must include project_id, client_email, and private_key.',
+      );
+    }
+
+    return {
+      projectId: parsed.project_id.trim(),
+      clientEmail: parsed.client_email.trim(),
+      privateKey: parsed.private_key.replace(/\\n/g, '\n'),
+    };
   }
 }
