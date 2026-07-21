@@ -1,0 +1,6 @@
+export enum DineInInvoiceStatus {
+  REQUESTED = 'REQUESTED',
+  PAYMENT_PENDING = 'PAYMENT_PENDING',
+  PAID = 'PAID',
+  CANCELLED = 'CANCELLED',
+}
