@@ -25,7 +25,7 @@ export function parseCorsOrigins(value: string | undefined): string[] {
 
 export function parsePortEnv(
   value: string | undefined,
-  defaultValue = 3001,
+  defaultValue = 3000,
 ): number {
   const normalized = optionalEnv(value);
   if (!normalized) return defaultValue;
@@ -50,6 +50,7 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     'RAZORPAY_KEY_ID',
     'RAZORPAY_KEY_SECRET',
     'RAZORPAY_WEBHOOK_SECRET',
+    'JWT_SECRET',
   ].filter((key) => !optionalEnv(env[key]));
 
   if (

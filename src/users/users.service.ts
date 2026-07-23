@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   HttpException,
@@ -6,7 +7,7 @@ import {
   InternalServerErrorException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UpdateCurrentUserProfileDto } from './dto/update-profile.dto';
 import { User, UserRole } from './entities/user.entity';
 import {
   ProfilePhotoStorageService,
@@ -68,9 +69,18 @@ export class UsersService {
     }
   }
 
-  async updateCurrentProfile(user: User, dto: UpdateProfileDto): Promise<User> {
-    if (dto.name !== undefined) {
-      user.name = dto.name.trim();
+  async updateCurrentProfile(
+    user: User,
+    dto: UpdateCurrentUserProfileDto,
+    authenticatedPhone?: string,
+  ): Promise<User> {
+    const fullName = this.resolveAliasedValue(
+      dto.fullName,
+      dto.name,
+      'fullName',
+    );
+    if (fullName !== undefined) {
+      user.name = fullName.trim();
     }
 
     if (dto.email !== undefined) {
@@ -80,13 +90,34 @@ export class UsersService {
       user.emailVerified = false;
     }
 
-    if (dto.phone !== undefined) {
-      const phone = this.normalizePhone(dto.phone);
+    const requestedPhone = this.resolveAliasedValue(
+      dto.phoneNumber,
+      dto.phone,
+      'phoneNumber',
+    );
+    if (requestedPhone !== undefined) {
+      const phone = this.normalizePhone(requestedPhone);
+      if (
+        authenticatedPhone &&
+        phone !== this.normalizePhone(authenticatedPhone)
+      ) {
+        throw new BadRequestException(
+          'Phone number changes must be completed through Firebase OTP verification.',
+        );
+      }
       await this.ensurePhoneIsAvailable(phone, user);
       if (user.phone !== phone) {
         user.phone = phone;
         user.phoneVerified = false;
       }
+    }
+
+    if (dto.dateOfBirth !== undefined) {
+      user.dateOfBirth = this.normalizeDateOfBirth(dto.dateOfBirth);
+    }
+
+    if (dto.gender !== undefined) {
+      user.gender = dto.gender;
     }
 
     return this.usersRepository.save(user);
@@ -99,7 +130,13 @@ export class UsersService {
     const previousProfileImage = user.profileImage;
     const profileImage = await this.profilePhotoStorage.saveProfilePhoto(file);
     user.profileImage = profileImage;
-    const updatedUser = await this.usersRepository.save(user);
+    let updatedUser: User;
+    try {
+      updatedUser = await this.usersRepository.save(user);
+    } catch (error) {
+      await this.deleteStoredProfilePhotoSafely(profileImage);
+      throw error;
+    }
     await this.deleteStoredProfilePhotoSafely(previousProfileImage);
     return updatedUser;
   }
@@ -150,6 +187,8 @@ export class UsersService {
           name: null,
           email: null,
           profileImage: null,
+          dateOfBirth: null,
+          gender: null,
           role: UserRole.CUSTOMER,
           isActive: true,
           phoneVerified: true,
@@ -230,12 +269,48 @@ export class UsersService {
     }
 
     if (!user.email && identity.email) {
-      const emailUser = await this.usersRepository.findByEmail(identity.email);
+      const email = identity.email.trim().toLowerCase();
+      const emailUser = await this.usersRepository.findByEmail(email);
       if (!emailUser || emailUser.id === user.id) {
-        user.email = identity.email;
+        user.email = email;
         user.emailVerified = identity.emailVerified;
       }
     }
+  }
+
+  private resolveAliasedValue(
+    primary: string | undefined,
+    alias: string | undefined,
+    fieldName: string,
+  ): string | undefined {
+    if (
+      primary !== undefined &&
+      alias !== undefined &&
+      primary.trim() !== alias.trim()
+    ) {
+      throw new BadRequestException(`Provide only one value for ${fieldName}.`);
+    }
+    return primary ?? alias;
+  }
+
+  private normalizeDateOfBirth(value: string): string {
+    const normalized = value.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+      throw new BadRequestException('dateOfBirth must be a valid ISO date.');
+    }
+    const parsed = new Date(`${normalized}T00:00:00.000Z`);
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    if (
+      Number.isNaN(parsed.getTime()) ||
+      parsed.toISOString().slice(0, 10) !== normalized ||
+      parsed > today
+    ) {
+      throw new BadRequestException(
+        'dateOfBirth must be a valid ISO date that is not in the future.',
+      );
+    }
+    return normalized;
   }
 
   private isUniqueConstraintViolation(error: unknown): boolean {

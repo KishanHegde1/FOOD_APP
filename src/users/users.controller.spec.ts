@@ -32,16 +32,17 @@ describe('UsersController', () => {
 
   it('gets the authenticated user profile', async () => {
     await expect(
-      controller.getCurrentProfile({ uid: 'firebase-uid' } as never),
+      controller.getCurrentProfile(firebaseUser()),
     ).resolves.toMatchObject({
       success: true,
       data: {
         user: {
           id: user.id,
-          firebaseUid: 'firebase-uid',
+          fullName: 'Customer',
           phone: '+919876543210',
           phoneNumber: '+919876543210',
           role: UserRole.CUSTOMER,
+          isProfileComplete: true,
         },
       },
     });
@@ -52,16 +53,20 @@ describe('UsersController', () => {
 
   it('updates the authenticated user profile', async () => {
     await expect(
-      controller.updateCurrentProfile({ uid: 'firebase-uid' } as never, {
-        name: 'Updated User',
+      controller.updateCurrentProfile(firebaseUser(), {
+        fullName: 'Updated User',
       }),
     ).resolves.toMatchObject({
       message: 'Profile updated successfully',
       data: { user: { name: 'Updated User' } },
     });
-    expect(usersService.updateCurrentProfile).toHaveBeenCalledWith(user, {
-      name: 'Updated User',
-    });
+    expect(usersService.updateCurrentProfile).toHaveBeenCalledWith(
+      user,
+      {
+        fullName: 'Updated User',
+      },
+      '+919876543210',
+    );
   });
 
   it('uploads the authenticated user profile photo', async () => {
@@ -75,7 +80,10 @@ describe('UsersController', () => {
     ).resolves.toMatchObject({
       message: 'Profile photo updated successfully',
       data: {
-        user: { profileImage: '/uploads/profile-photos/photo.jpg' },
+        user: {
+          profileImage: '/uploads/profile-photos/photo.jpg',
+          profilePhotoUrl: '/uploads/profile-photos/photo.jpg',
+        },
       },
     });
   });
@@ -106,4 +114,11 @@ function createUser(): User {
     createdAt: new Date('2026-07-20T00:00:00.000Z'),
     updatedAt: new Date('2026-07-20T00:00:00.000Z'),
   };
+}
+
+function firebaseUser() {
+  return {
+    uid: 'firebase-uid',
+    phoneNumber: '+919876543210',
+  } as never;
 }

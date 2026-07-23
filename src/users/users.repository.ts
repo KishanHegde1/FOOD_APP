@@ -19,7 +19,12 @@ export class UsersRepository {
   }
 
   async findByEmail(email: string): Promise<User | null> {
-    return (await this.repository.findOne({ where: { email } })) ?? null;
+    return (
+      (await this.repository
+        .createQueryBuilder('user')
+        .where('LOWER(user.email) = LOWER(:email)', { email })
+        .getOne()) ?? null
+    );
   }
 
   create(data: Partial<User>): User {

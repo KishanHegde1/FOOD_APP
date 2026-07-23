@@ -1,15 +1,18 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { UserRole } from '../../users/entities/user.entity';
+import { UserGender, UserRole } from '../../users/entities/user.entity';
 
 export class FirebaseLoginUserDto {
   @ApiProperty({ format: 'uuid' })
   id!: string;
 
   @ApiProperty()
-  firebaseUid!: string;
+  phone!: string;
 
   @ApiProperty()
-  phone!: string;
+  phoneNumber!: string;
+
+  @ApiPropertyOptional({ nullable: true })
+  fullName!: string | null;
 
   @ApiPropertyOptional({ nullable: true })
   name!: string | null;
@@ -19,6 +22,18 @@ export class FirebaseLoginUserDto {
 
   @ApiPropertyOptional({ nullable: true })
   profileImage!: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  profilePhotoUrl!: string | null;
+
+  @ApiPropertyOptional({ type: String, format: 'date', nullable: true })
+  dateOfBirth!: string | null;
+
+  @ApiPropertyOptional({ enum: UserGender, nullable: true })
+  gender!: UserGender | null;
+
+  @ApiProperty()
+  isProfileComplete!: boolean;
 
   @ApiProperty({ enum: UserRole })
   role!: UserRole;
@@ -34,6 +49,17 @@ export class FirebaseLoginUserDto {
 }
 
 export class FirebaseLoginResponseDto {
+  @ApiProperty({
+    description: 'Short-lived backend JWT. Never log this value.',
+  })
+  accessToken!: string;
+
+  @ApiProperty({ example: 'Bearer' })
+  tokenType!: 'Bearer';
+
+  @ApiProperty({ example: 604800 })
+  expiresIn!: number;
+
   @ApiProperty({ type: FirebaseLoginUserDto })
   user!: FirebaseLoginUserDto;
 }

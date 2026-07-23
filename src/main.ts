@@ -74,12 +74,22 @@ async function bootstrap() {
         },
         'firebase-auth',
       )
+      .addBearerAuth(
+        {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          description:
+            'Backend JWT returned by POST /auth/firebase-login. Firebase ID tokens remain accepted for backward compatibility.',
+        },
+        'backend-auth',
+      )
       .build();
     const document = SwaggerModule.createDocument(app, swaggerConfig);
     SwaggerModule.setup('api/docs', app, document);
   }
 
-  const port = configService.get<number>('app.port') ?? 3001;
+  const port = configService.get<number>('app.port') ?? 3000;
   await app.listen(port, '0.0.0.0');
   console.log(
     `food-app-backend started environment=${environment} port=${port}`,

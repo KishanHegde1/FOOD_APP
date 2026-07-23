@@ -2,11 +2,15 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AuthService } from './auth.service';
 import { User, UserRole } from '../users/entities/user.entity';
 import { UsersService } from '../users/users.service';
+import { JwtTokenService } from './jwt-token.service';
 
 describe('AuthService', () => {
   let service: AuthService;
   const usersService = {
     findOrCreateByFirebaseIdentity: jest.fn(),
+  };
+  const jwtTokenService = {
+    issueAccessToken: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -16,6 +20,10 @@ describe('AuthService', () => {
         {
           provide: UsersService,
           useValue: usersService,
+        },
+        {
+          provide: JwtTokenService,
+          useValue: jwtTokenService,
         },
       ],
     }).compile();
@@ -45,6 +53,11 @@ describe('AuthService', () => {
       updatedAt: new Date(),
     };
     usersService.findOrCreateByFirebaseIdentity.mockResolvedValue(user);
+    jwtTokenService.issueAccessToken.mockResolvedValue({
+      accessToken: 'backend-jwt',
+      tokenType: 'Bearer',
+      expiresIn: 604800,
+    });
 
     await expect(
       service.loginWithFirebase({
@@ -56,13 +69,21 @@ describe('AuthService', () => {
         emailVerified: false,
       }),
     ).resolves.toEqual({
+      accessToken: 'backend-jwt',
+      tokenType: 'Bearer',
+      expiresIn: 604800,
       user: {
         id: user.id,
-        firebaseUid: 'firebase-uid',
         phone: '+919876543210',
+        phoneNumber: '+919876543210',
+        fullName: null,
         name: null,
         email: null,
         profileImage: null,
+        profilePhotoUrl: null,
+        dateOfBirth: null,
+        gender: null,
+        isProfileComplete: false,
         role: UserRole.CUSTOMER,
         phoneVerified: true,
         isActive: true,
@@ -78,5 +99,6 @@ describe('AuthService', () => {
       profileImage: null,
       emailVerified: false,
     });
+    expect(jwtTokenService.issueAccessToken).toHaveBeenCalledWith(user);
   });
 });

@@ -17,6 +17,7 @@ import {
   ApiBadRequestResponse,
   ApiBearerAuth,
   ApiBody,
+  ApiConflictResponse,
   ApiConsumes,
   ApiOkResponse,
   ApiOperation,
@@ -27,7 +28,7 @@ import { CurrentFirebaseUser } from '../auth/decorators/current-firebase-user.de
 import { FirebaseAuthGuard } from '../auth/guards/firebase-auth.guard';
 import type { FirebaseUser } from '../auth/interfaces/firebase-user.interface';
 import { ProfileResponseDto } from './dto/profile-response.dto';
-import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UpdateCurrentUserProfileDto } from './dto/update-profile.dto';
 import {
   PROFILE_PHOTO_MAX_BYTES,
   UploadedProfilePhoto,
@@ -35,7 +36,7 @@ import {
 import { UsersService } from './users.service';
 
 @ApiTags('Users')
-@ApiBearerAuth('firebase-auth')
+@ApiBearerAuth('backend-auth')
 @UseGuards(FirebaseAuthGuard)
 @Controller('users')
 export class UsersController {
@@ -60,18 +61,23 @@ export class UsersController {
   @ApiOperation({ summary: 'Update the authenticated user profile' })
   @ApiOkResponse({ type: ProfileResponseDto })
   @ApiBadRequestResponse({ description: 'Invalid profile details.' })
+  @ApiConflictResponse({ description: 'The email address is already in use.' })
   @ApiUnauthorizedResponse({
     description: 'Firebase authentication is required.',
   })
   async updateCurrentProfile(
     @CurrentFirebaseUser() firebaseUser: FirebaseUser,
-    @Body() dto: UpdateProfileDto,
+    @Body() dto: UpdateCurrentUserProfileDto,
   ): Promise<ProfileResponseDto> {
     const user = await this.usersService.findActiveByFirebaseUid(
       firebaseUser.uid,
     );
     return ProfileResponseDto.fromEntity(
-      await this.usersService.updateCurrentProfile(user, dto),
+      await this.usersService.updateCurrentProfile(
+        user,
+        dto,
+        firebaseUser.phoneNumber,
+      ),
       'Profile updated successfully',
     );
   }

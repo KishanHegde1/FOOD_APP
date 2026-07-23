@@ -13,6 +13,14 @@ export enum UserRole {
   ADMIN = 'ADMIN',
 }
 
+export enum UserGender {
+  MALE = 'MALE',
+  FEMALE = 'FEMALE',
+  NON_BINARY = 'NON_BINARY',
+  OTHER = 'OTHER',
+  PREFER_NOT_TO_SAY = 'PREFER_NOT_TO_SAY',
+}
+
 @Entity({ name: 'users' })
 export class User {
   @PrimaryGeneratedColumn('uuid', { name: 'id' })
@@ -37,6 +45,18 @@ export class User {
 
   @Column({ name: 'profile_image', type: 'text', nullable: true })
   profileImage!: string | null;
+
+  @Column({ name: 'date_of_birth', type: 'date', nullable: true })
+  dateOfBirth?: string | null;
+
+  @Column({
+    name: 'gender',
+    type: 'enum',
+    enum: UserGender,
+    enumName: 'user_gender',
+    nullable: true,
+  })
+  gender?: UserGender | null;
 
   @Column({ name: 'role', type: 'enum', enum: UserRole, enumName: 'user_role' })
   role!: UserRole;

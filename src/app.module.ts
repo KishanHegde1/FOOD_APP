@@ -20,6 +20,7 @@ import { HealthModule } from './health/health.module';
 import { MenuCategoriesModule } from './menu-categories/menu-categories.module';
 import { PaymentsModule } from './payments/payments.module';
 import { RestaurantsModule } from './restaurants/restaurants.module';
+import { RoomBookingModule } from './room-booking/room-booking.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -47,6 +48,7 @@ import { UsersModule } from './users/users.module';
     CheckoutModule,
     PaymentsModule,
     DineInModule,
+    RoomBookingModule,
   ],
   controllers: [AppController],
   providers: [AppService],

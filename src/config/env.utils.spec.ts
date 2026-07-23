@@ -27,7 +27,7 @@ describe('env utils', () => {
   });
 
   it('parses and validates the application port', () => {
-    expect(parsePortEnv(undefined)).toBe(3001);
+    expect(parsePortEnv(undefined)).toBe(3000);
     expect(parsePortEnv('8080')).toBe(8080);
     expect(() => parsePortEnv('invalid')).toThrow(
       'PORT must be an integer between 1 and 65535.',
@@ -39,7 +39,7 @@ describe('env utils', () => {
 
   it('requires production deployment variables without exposing values', () => {
     expect(() => validateEnvironment({ NODE_ENV: 'production' })).toThrow(
-      'Missing required production environment variables: DATABASE_URL, RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET, FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_SERVICE_ACCOUNT_PATH',
+      'Missing required production environment variables: DATABASE_URL, RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET, JWT_SECRET, FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_SERVICE_ACCOUNT_PATH',
     );
   });
 
@@ -51,6 +51,7 @@ describe('env utils', () => {
         RAZORPAY_KEY_ID: 'key',
         RAZORPAY_KEY_SECRET: 'secret',
         RAZORPAY_WEBHOOK_SECRET: 'webhook',
+        JWT_SECRET: 'test-jwt-secret',
         FIREBASE_SERVICE_ACCOUNT_PATH:
           '/etc/secrets/firebase-service-account.json',
       }),
