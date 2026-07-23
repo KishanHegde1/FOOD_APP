@@ -5,5 +5,9 @@
   "testRegex": ".e2e-spec.ts$",
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
+  },
+  "moduleNameMapper": {
+    "^firebase-admin/app$": "<rootDir>/../src/test/firebase-admin-app.mock.ts",
+    "^firebase-admin/auth$": "<rootDir>/../src/test/firebase-admin-auth.mock.ts"
   }
 }

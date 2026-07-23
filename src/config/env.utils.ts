@@ -23,6 +23,21 @@ export function parseCorsOrigins(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
+export function parsePortEnv(
+  value: string | undefined,
+  defaultValue = 3001,
+): number {
+  const normalized = optionalEnv(value);
+  if (!normalized) return defaultValue;
+
+  const port = Number(normalized);
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw new Error('PORT must be an integer between 1 and 65535.');
+  }
+
+  return port;
+}
+
 export function isProductionEnv(env: NodeJS.ProcessEnv): boolean {
   return env.NODE_ENV?.trim().toLowerCase() === 'production';
 }

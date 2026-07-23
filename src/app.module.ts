@@ -7,9 +7,12 @@ import { AddressesModule } from './addresses/addresses.module';
 import { AuthModule } from './auth/auth.module';
 import { CartModule } from './cart/cart.module';
 import { CheckoutModule } from './checkout/checkout.module';
+import appConfig from './config/app.config';
 import { buildPostgresOptions } from './config/database-options';
 import databaseConfig from './config/database.config';
-import { validateEnvironment } from './config/env.utils';
+import firebaseConfig from './config/firebase.config';
+import jwtConfig from './config/jwt.config';
+import { validateEnv } from './config/validation.schema';
 import { DineInModule } from './dine-in/dine-in.module';
 import { DiscoveryModule } from './discovery/discovery.module';
 import { FoodsModule } from './foods/foods.module';
@@ -23,8 +26,8 @@ import { UsersModule } from './users/users.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [databaseConfig],
-      validate: validateEnvironment,
+      load: [appConfig, databaseConfig, firebaseConfig, jwtConfig],
+      validate: validateEnv,
     }),
     TypeOrmModule.forRootAsync({
       useFactory: () =>

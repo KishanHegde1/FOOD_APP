@@ -61,14 +61,16 @@ export class FirebaseAdminService implements OnModuleInit {
   }
 
   loadServiceAccount(): ServiceAccount {
-    const serviceAccountJson = this.configService.get<string>(
+    const serviceAccountJson = this.getCredentialSetting(
+      'firebase.serviceAccountJson',
       'FIREBASE_SERVICE_ACCOUNT_JSON',
     );
     if (serviceAccountJson?.trim()) {
       return this.parseServiceAccountJson(serviceAccountJson);
     }
 
-    const serviceAccountPath = this.configService.get<string>(
+    const serviceAccountPath = this.getCredentialSetting(
+      'firebase.serviceAccountPath',
       'FIREBASE_SERVICE_ACCOUNT_PATH',
     );
     if (!serviceAccountPath) {
@@ -83,11 +85,14 @@ export class FirebaseAdminService implements OnModuleInit {
       throw new Error('The Firebase service-account file could not be found.');
     }
 
+    let serviceAccountFile: string;
     try {
-      return this.parseServiceAccountJson(readFileSync(resolvedPath, 'utf8'));
+      serviceAccountFile = readFileSync(resolvedPath, 'utf8');
     } catch {
       throw new Error('The Firebase service-account file could not be read.');
     }
+
+    return this.parseServiceAccountJson(serviceAccountFile);
   }
 
   resolveServiceAccountPath(value: string): string {
@@ -118,6 +123,18 @@ export class FirebaseAdminService implements OnModuleInit {
     }
 
     return resolvedPath;
+  }
+
+  private getCredentialSetting(
+    namespacedKey: string,
+    legacyKey: string,
+  ): string | undefined {
+    const configured = this.configService.get<string>(namespacedKey);
+    if (configured?.trim()) return configured;
+
+    // Retain compatibility for isolated tests and modules that provide only
+    // the original environment-variable keys through ConfigService.
+    return this.configService.get<string>(legacyKey);
   }
 
   private parseServiceAccountJson(value: string): ServiceAccount {

@@ -1,15 +1,13 @@
-import { forwardRef, Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { Module } from '@nestjs/common';
 import { UsersModule } from '../users/users.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
-import { FirebaseAdminService } from './firebase-admin.service';
-import { FirebaseAuthGuard } from './guards/firebase-auth.guard';
+import { FirebaseAuthModule } from './firebase-auth.module';
 
 @Module({
-  imports: [ConfigModule, forwardRef(() => UsersModule)],
+  imports: [FirebaseAuthModule, UsersModule],
   controllers: [AuthController],
-  providers: [AuthService, FirebaseAdminService, FirebaseAuthGuard],
-  exports: [FirebaseAdminService, FirebaseAuthGuard],
+  providers: [AuthService],
+  exports: [FirebaseAuthModule],
 })
 export class AuthModule {}

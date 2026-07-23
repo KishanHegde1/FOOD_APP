@@ -25,6 +25,17 @@ describe('FirebaseAdminService credential loading', () => {
     });
   });
 
+  it('uses the centralized Firebase configuration namespace', () => {
+    const service = firebaseService({
+      'firebase.serviceAccountJson': serviceAccountJson,
+    });
+
+    expect(service.loadServiceAccount()).toMatchObject({
+      projectId: 'food-app',
+      clientEmail: 'firebase-adminsdk@example.iam.gserviceaccount.com',
+    });
+  });
+
   it('loads Firebase credentials from a local file path', async () => {
     const directory = join('secrets', `firebase-test-${Date.now()}`);
     const filePath = join(directory, 'firebase-service-account.json');
@@ -72,6 +83,25 @@ describe('FirebaseAdminService credential loading', () => {
     expect(() => service.loadServiceAccount()).toThrow(
       'Firebase service-account credentials are invalid JSON.',
     );
+  });
+
+  it('preserves credential validation errors for a readable local file', async () => {
+    const directory = join('secrets', `firebase-test-${Date.now()}`);
+    const filePath = join(directory, 'firebase-service-account.json');
+    await mkdir(directory, { recursive: true });
+    await writeFile(filePath, '{not-json');
+
+    try {
+      const service = firebaseService({
+        FIREBASE_SERVICE_ACCOUNT_PATH: filePath,
+      });
+
+      expect(() => service.loadServiceAccount()).toThrow(
+        'Firebase service-account credentials are invalid JSON.',
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it('validates required Firebase service-account fields', () => {

@@ -1,4 +1,5 @@
 import { ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import express from 'express';
@@ -6,17 +7,23 @@ import helmet from 'helmet';
 import { join } from 'path';
 import { AppModule } from './app.module';
 import { ApiExceptionFilter } from './common/filters/api-exception.filter';
-import { parseCorsOrigins } from './config/env.utils';
 import { PROFILE_PHOTO_UPLOAD_ROUTE } from './users/profile-photo-storage.service';
 
 async function bootstrap() {
-  const environment = process.env.NODE_ENV ?? 'development';
-  const isProduction = environment === 'production';
+  const bootstrapEnvironment = process.env.NODE_ENV ?? 'development';
+  const bootstrapIsProduction = bootstrapEnvironment === 'production';
   const app = await NestFactory.create(AppModule, {
     rawBody: true,
-    logger: isProduction ? ['error', 'warn'] : ['error', 'warn', 'log'],
+    logger: bootstrapIsProduction
+      ? ['error', 'warn']
+      : ['error', 'warn', 'log'],
   });
-  const configuredOrigins = parseCorsOrigins(process.env.CORS_ORIGIN);
+  const configService = app.get(ConfigService);
+  const environment =
+    configService.get<string>('app.environment') ?? bootstrapEnvironment;
+  const isProduction = environment === 'production';
+  const configuredOrigins =
+    configService.get<string[]>('app.corsOrigins') ?? [];
 
   app.use(helmet());
   app.use(
@@ -54,23 +61,25 @@ async function bootstrap() {
     }),
   );
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('Food Delivery API')
-    .setDescription('Food delivery backend API')
-    .setVersion('1.0')
-    .addBearerAuth(
-      {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'Firebase ID token',
-      },
-      'firebase-auth',
-    )
-    .build();
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api/docs', app, document);
+  if (configService.get<boolean>('app.swaggerEnabled') ?? true) {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('Food Delivery API')
+      .setDescription('Food delivery backend API')
+      .setVersion('1.0')
+      .addBearerAuth(
+        {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'Firebase ID token',
+        },
+        'firebase-auth',
+      )
+      .build();
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('api/docs', app, document);
+  }
 
-  const port = Number(process.env.PORT || 3001);
+  const port = configService.get<number>('app.port') ?? 3001;
   await app.listen(port, '0.0.0.0');
   console.log(
     `food-app-backend started environment=${environment} port=${port}`,

@@ -1,6 +1,7 @@
 import {
   parseBooleanEnv,
   parseCorsOrigins,
+  parsePortEnv,
   validateEnvironment,
 } from './env.utils';
 
@@ -23,6 +24,17 @@ describe('env utils', () => {
         ' https://admin.example.com,https://restaurant.example.com , ',
       ),
     ).toEqual(['https://admin.example.com', 'https://restaurant.example.com']);
+  });
+
+  it('parses and validates the application port', () => {
+    expect(parsePortEnv(undefined)).toBe(3001);
+    expect(parsePortEnv('8080')).toBe(8080);
+    expect(() => parsePortEnv('invalid')).toThrow(
+      'PORT must be an integer between 1 and 65535.',
+    );
+    expect(() => parsePortEnv('70000')).toThrow(
+      'PORT must be an integer between 1 and 65535.',
+    );
   });
 
   it('requires production deployment variables without exposing values', () => {
