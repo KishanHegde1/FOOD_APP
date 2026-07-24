@@ -158,10 +158,55 @@ describe('BookingsService', () => {
       ensureAvailable: jest.fn(),
       lockInventoryRows: jest.fn().mockResolvedValue(inventoryRows),
     } as unknown as AvailabilityService;
+    const roomBookingPaymentsService = {
+      findByUserAndIdempotency: jest.fn().mockResolvedValue(null),
+      createPendingAttempt: jest
+        .fn()
+        .mockImplementation(async (_manager, input) => ({
+          id: 'room-payment-id',
+          bookingId: input.booking.id,
+          userId: input.user.id,
+          paymentReference: 'HBP-TEST-REF',
+          paymentMethod: HotelPaymentMethod.RAZORPAY,
+          status: HotelPaymentStatus.PENDING,
+          amountPaise: 220000,
+          currency: 'INR',
+          gateway: 'RAZORPAY',
+          gatewayOrderId: null,
+          gatewayPaymentId: null,
+          gatewaySignature: null,
+          gatewayEventId: null,
+          idempotencyKey: input.idempotencyKey,
+          failureCode: null,
+          failureReason: null,
+          initiatedAt: new Date('2030-01-01T00:00:00.000Z'),
+          paidAt: null,
+          failedAt: null,
+        })),
+      createCheckoutForPayment: jest.fn().mockResolvedValue({
+        id: 'room-payment-id',
+        bookingId: 'booking-id',
+        paymentReference: 'HBP-TEST-REF',
+        paymentMethod: HotelPaymentMethod.RAZORPAY,
+        status: HotelPaymentStatus.PENDING,
+        gateway: 'RAZORPAY',
+        amount: 220000,
+        currency: 'INR',
+        keyId: 'rzp_test_key',
+        razorpayOrderId: 'order_test',
+        razorpayPaymentId: null,
+        failureCode: null,
+        failureReason: null,
+        initiatedAt: '2030-01-01T00:00:00.000Z',
+        paidAt: null,
+        failedAt: null,
+      }),
+    };
     const service = new BookingsService(
       dataSource as never,
       bookingRepository as never,
       availabilityService,
+      roomBookingPaymentsService as never,
     );
     return {
       service,
@@ -172,6 +217,7 @@ describe('BookingsService', () => {
       inventoryRepository,
       historyRepository,
       availabilityService,
+      roomBookingPaymentsService,
       inventoryRows,
     };
   }
@@ -215,6 +261,42 @@ describe('BookingsService', () => {
       ConflictException,
     );
     expect(availabilityService.lockAndQuote).not.toHaveBeenCalled();
+  });
+
+  it('reserves inventory and returns a Razorpay checkout for an online room booking', async () => {
+    const {
+      service,
+      roomBookingPaymentsService,
+      inventoryRows,
+      historyRepository,
+    } = createService();
+    const dto = bookingDto();
+    dto.paymentMethod = HotelPaymentMethod.RAZORPAY;
+
+    const result = await service.createBooking(user, dto, 'room-checkout-1');
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        booking: expect.objectContaining({
+          bookingStatus: HotelBookingStatus.PENDING,
+          paymentStatus: HotelPaymentStatus.PENDING,
+        }),
+        payment: expect.objectContaining({
+          razorpayOrderId: 'order_test',
+          keyId: 'rzp_test_key',
+        }),
+      }),
+    );
+    expect(inventoryRows.map((row) => row.reservedInventory)).toEqual([1, 1]);
+    expect(
+      roomBookingPaymentsService.createPendingAttempt,
+    ).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ idempotencyKey: 'room-checkout-1' }),
+    );
+    expect(historyRepository.save).toHaveBeenCalledWith(
+      expect.objectContaining({ status: HotelBookingStatus.PENDING }),
+    );
   });
 
   it('restores reserved inventory when an owned confirmed booking is cancelled', async () => {

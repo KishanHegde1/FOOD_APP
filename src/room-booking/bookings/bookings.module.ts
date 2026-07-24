@@ -11,6 +11,7 @@ import { BookingsService } from './bookings.service';
 import { BookingGuest } from './entities/booking-guest.entity';
 import { BookingStatusHistory } from './entities/booking-status-history.entity';
 import { HotelBooking } from './entities/hotel-booking.entity';
+import { RoomBookingPaymentsModule } from '../payments/room-booking-payments.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { HotelBooking } from './entities/hotel-booking.entity';
       BookingStatusHistory,
     ]),
     AvailabilityModule,
+    RoomBookingPaymentsModule,
     AuthModule,
     UsersModule,
   ],

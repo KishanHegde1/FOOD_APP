@@ -2,7 +2,6 @@ import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
-  Equals,
   IsArray,
   IsDateString,
   IsEmail,
@@ -93,10 +92,18 @@ export class CreateBookingDto {
     example: HotelPaymentMethod.PAY_AT_HOTEL,
   })
   @IsEnum(HotelPaymentMethod)
-  @Equals(HotelPaymentMethod.PAY_AT_HOTEL, {
-    message: 'Only PAY_AT_HOTEL is available for room bookings.',
+  paymentMethod!: HotelPaymentMethod;
+
+  @ApiPropertyOptional({
+    maxLength: 128,
+    description:
+      'Stable client-generated key required for RAZORPAY booking creation. Header Idempotency-Key takes precedence.',
   })
-  paymentMethod!: HotelPaymentMethod.PAY_AT_HOTEL;
+  @IsOptional()
+  @Transform(trimStringTransform)
+  @IsString()
+  @MaxLength(128)
+  idempotencyKey?: string;
 
   @ApiProperty({ type: [CreateBookingGuestDto], minItems: 1 })
   @IsArray()

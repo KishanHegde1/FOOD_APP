@@ -31,10 +31,18 @@ import { BookingQueryDto } from './dto/booking-query.dto';
 import {
   HotelBookingResponseDto,
   PaginatedBookingsResponseDto,
+  RoomBookingCheckoutResponseDto,
 } from './dto/booking-response.dto';
 import { BookingGuest } from './entities/booking-guest.entity';
 import { BookingStatusHistory } from './entities/booking-status-history.entity';
 import { HotelBooking } from './entities/hotel-booking.entity';
+import { HotelBookingPayment } from '../payments/entities/hotel-booking-payment.entity';
+import { RoomBookingPaymentsService } from '../payments/room-booking-payments.service';
+
+type CreatedBookingAttempt = {
+  booking: HotelBooking;
+  payment: HotelBookingPayment | null;
+};
 
 @Injectable()
 export class BookingsService {
@@ -44,21 +52,66 @@ export class BookingsService {
     @InjectRepository(HotelBooking)
     private readonly bookingsRepository: Repository<HotelBooking>,
     private readonly availabilityService: AvailabilityService,
+    private readonly roomBookingPaymentsService: RoomBookingPaymentsService,
   ) {}
 
   async createBooking(
     user: User,
     dto: CreateBookingDto,
-  ): Promise<HotelBookingResponseDto> {
+    idempotencyKey?: string,
+  ): Promise<HotelBookingResponseDto | RoomBookingCheckoutResponseDto> {
     const stay = assertValidStay(dto.checkInDate, dto.checkOutDate);
     this.ensureGuestRequest(dto);
+    this.ensureSupportedPaymentMethod(dto.paymentMethod);
+    const onlineIdempotencyKey = this.onlineIdempotencyKey(
+      dto.paymentMethod,
+      idempotencyKey ?? dto.idempotencyKey,
+    );
+    if (onlineIdempotencyKey) {
+      const existing =
+        await this.roomBookingPaymentsService.findByUserAndIdempotency(
+          user.id,
+          onlineIdempotencyKey,
+        );
+      if (existing?.booking) {
+        return this.toOnlineCheckoutResponse(user, existing.booking, existing);
+      }
+    }
 
     for (let attempt = 0; attempt < 4; attempt += 1) {
       try {
-        return await this.dataSource.transaction((manager) =>
-          this.createInTransaction(manager, user, dto, stay.nights),
+        const created = await this.dataSource.transaction((manager) =>
+          this.createInTransaction(
+            manager,
+            user,
+            dto,
+            stay.nights,
+            onlineIdempotencyKey,
+          ),
         );
+        if (created.payment) {
+          return this.toOnlineCheckoutResponse(
+            user,
+            created.booking,
+            created.payment,
+          );
+        }
+        return this.toResponse(created.booking);
       } catch (error) {
+        if (onlineIdempotencyKey && this.isPaymentIdempotencyCollision(error)) {
+          const existing =
+            await this.roomBookingPaymentsService.findByUserAndIdempotency(
+              user.id,
+              onlineIdempotencyKey,
+            );
+          if (existing?.booking) {
+            return this.toOnlineCheckoutResponse(
+              user,
+              existing.booking,
+              existing,
+            );
+          }
+        }
         if (this.isBookingNumberCollision(error) && attempt < 3) continue;
         throw error;
       }
@@ -130,7 +183,8 @@ export class BookingsService {
     user: User,
     dto: CreateBookingDto,
     numberOfNights: number,
-  ): Promise<HotelBookingResponseDto> {
+    onlineIdempotencyKey: string | null,
+  ): Promise<CreatedBookingAttempt> {
     const hotel = await manager.findOne(Hotel, {
       where: { id: dto.hotelId, isActive: true },
     });
@@ -152,6 +206,7 @@ export class BookingsService {
     );
     this.availabilityService.ensureAvailable(quote);
 
+    const isRazorpay = dto.paymentMethod === HotelPaymentMethod.RAZORPAY;
     const booking = manager.getRepository(HotelBooking).create({
       bookingNumber: this.newBookingNumber(),
       userId: user.id,
@@ -167,9 +222,13 @@ export class BookingsService {
       contactPhone: dto.contactPhone.trim(),
       contactEmail: dto.contactEmail?.trim().toLowerCase() || null,
       specialRequests: dto.specialRequests?.trim() || null,
-      paymentMethod: HotelPaymentMethod.PAY_AT_HOTEL,
-      paymentStatus: HotelPaymentStatus.PAY_AT_HOTEL,
-      bookingStatus: HotelBookingStatus.CONFIRMED,
+      paymentMethod: dto.paymentMethod,
+      paymentStatus: isRazorpay
+        ? HotelPaymentStatus.PENDING
+        : HotelPaymentStatus.PAY_AT_HOTEL,
+      bookingStatus: isRazorpay
+        ? HotelBookingStatus.PENDING
+        : HotelBookingStatus.CONFIRMED,
       currency: room.currency,
       nightlyPriceBreakdown: quote.pricing.nightlyBreakdown,
       subtotal: quote.pricing.subtotal,
@@ -177,7 +236,7 @@ export class BookingsService {
       discountAmount: quote.pricing.discountAmount,
       totalAmount: quote.pricing.totalAmount,
       cancellationReason: null,
-      confirmedAt: new Date(),
+      confirmedAt: isRazorpay ? null : new Date(),
       cancelledAt: null,
       checkedInAt: null,
       checkedOutAt: null,
@@ -210,16 +269,25 @@ export class BookingsService {
     await manager.getRepository(BookingStatusHistory).save(
       manager.getRepository(BookingStatusHistory).create({
         bookingId: savedBooking.id,
-        status: HotelBookingStatus.CONFIRMED,
+        status: savedBooking.bookingStatus,
         changedByUserId: user.id,
-        reason: 'PAY_AT_HOTEL_CONFIRMED',
+        reason: isRazorpay
+          ? 'RAZORPAY_PAYMENT_PENDING'
+          : 'PAY_AT_HOTEL_CONFIRMED',
       }),
     );
 
     savedBooking.hotel = hotel;
     savedBooking.room = room;
     savedBooking.guests = savedGuests;
-    return this.toResponse(savedBooking);
+    const payment = isRazorpay
+      ? await this.roomBookingPaymentsService.createPendingAttempt(manager, {
+          booking: savedBooking,
+          user,
+          idempotencyKey: onlineIdempotencyKey ?? '',
+        })
+      : null;
+    return { booking: savedBooking, payment };
   }
 
   private async cancelInTransaction(
@@ -321,6 +389,45 @@ export class BookingsService {
     }
   }
 
+  private ensureSupportedPaymentMethod(method: HotelPaymentMethod): void {
+    if (
+      method !== HotelPaymentMethod.PAY_AT_HOTEL &&
+      method !== HotelPaymentMethod.RAZORPAY
+    ) {
+      throw new BadRequestException(
+        'Room bookings support PAY_AT_HOTEL or RAZORPAY only.',
+      );
+    }
+  }
+
+  private onlineIdempotencyKey(
+    method: HotelPaymentMethod,
+    value: string | undefined,
+  ): string | null {
+    if (method !== HotelPaymentMethod.RAZORPAY) return null;
+    const key = value?.trim();
+    if (!key || key.length > 128) {
+      throw new BadRequestException(
+        'Idempotency-Key is required and must be at most 128 characters for Razorpay room bookings.',
+      );
+    }
+    return key;
+  }
+
+  private async toOnlineCheckoutResponse(
+    user: User,
+    booking: HotelBooking,
+    payment: HotelBookingPayment,
+  ): Promise<RoomBookingCheckoutResponseDto> {
+    return {
+      booking: this.toResponse(booking),
+      payment: await this.roomBookingPaymentsService.createCheckoutForPayment(
+        user,
+        payment.id,
+      ),
+    };
+  }
+
   private ensureOccupancy(room: HotelRoom, dto: CreateBookingDto): void {
     if (dto.adultCount > room.maxAdults * dto.roomCount) {
       throw new ConflictException(
@@ -374,6 +481,17 @@ export class BookingsService {
       error.code === '23505' &&
       'constraint' in error &&
       error.constraint === 'UQ_hotel_bookings_number'
+    );
+  }
+
+  private isPaymentIdempotencyCollision(error: unknown): boolean {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === '23505' &&
+      'constraint' in error &&
+      error.constraint === 'UQ_hotel_booking_payments_user_idempotency'
     );
   }
 

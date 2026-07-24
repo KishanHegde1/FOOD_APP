@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -14,12 +15,15 @@ import {
   ApiBearerAuth,
   ApiConflictResponse,
   ApiCreatedResponse,
+  ApiExtraModels,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiHeader,
   ApiTags,
   ApiUnauthorizedResponse,
+  getSchemaPath,
 } from '@nestjs/swagger';
 import { CurrentFirebaseUser } from '../../auth/decorators/current-firebase-user.decorator';
 import { FirebaseAuthGuard } from '../../auth/guards/firebase-auth.guard';
@@ -31,6 +35,7 @@ import { BookingQueryDto } from './dto/booking-query.dto';
 import {
   HotelBookingResponseDto,
   PaginatedBookingsResponseDto,
+  RoomBookingCheckoutResponseDto,
 } from './dto/booking-response.dto';
 import { BookingsService } from './bookings.service';
 
@@ -38,6 +43,7 @@ import { BookingsService } from './bookings.service';
 @Controller('room-booking/bookings')
 @UseGuards(FirebaseAuthGuard)
 @ApiBearerAuth('firebase-auth')
+@ApiExtraModels(HotelBookingResponseDto, RoomBookingCheckoutResponseDto)
 @ApiUnauthorizedResponse({
   description: 'Firebase authentication is required.',
 })
@@ -49,9 +55,25 @@ export class BookingsController {
 
   @Post()
   @ApiOperation({
-    summary: 'Create and atomically confirm a Pay at Hotel booking',
+    summary:
+      'Create a Pay at Hotel booking or reserve a room and create a Razorpay checkout order',
   })
-  @ApiCreatedResponse({ type: HotelBookingResponseDto })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description:
+      'Required for RAZORPAY bookings. A stable client-generated key prevents duplicate booking/payment attempts.',
+  })
+  @ApiCreatedResponse({
+    description:
+      'A confirmed Pay at Hotel booking, or a pending Razorpay booking with checkout details.',
+    schema: {
+      oneOf: [
+        { $ref: getSchemaPath(HotelBookingResponseDto) },
+        { $ref: getSchemaPath(RoomBookingCheckoutResponseDto) },
+      ],
+    },
+  })
   @ApiBadRequestResponse({ description: 'Invalid booking request.' })
   @ApiConflictResponse({
     description: 'Room availability, occupancy, or booking conflict.',
@@ -59,10 +81,16 @@ export class BookingsController {
   @ApiNotFoundResponse({ description: 'Hotel or room not found.' })
   create(
     @CurrentFirebaseUser() firebaseUser: FirebaseUser,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Headers('x-idempotency-key') xIdempotencyKey: string | undefined,
     @Body() dto: CreateBookingDto,
-  ): Promise<HotelBookingResponseDto> {
+  ): Promise<HotelBookingResponseDto | RoomBookingCheckoutResponseDto> {
     return this.withUser(firebaseUser, (user) =>
-      this.bookingsService.createBooking(user, dto),
+      this.bookingsService.createBooking(
+        user,
+        dto,
+        idempotencyKey ?? xIdempotencyKey,
+      ),
     );
   }
 

@@ -46,5 +46,6 @@ import { RazorpayPaymentWebhookController } from './razorpay-payment-webhook.con
     PaymentsService,
     RazorpayDeliveryGatewayService,
   ],
+  exports: [RazorpayDeliveryGatewayService],
 })
 export class PaymentsModule {}

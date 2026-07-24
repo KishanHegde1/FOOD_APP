@@ -4,6 +4,7 @@ import {
   HotelPaymentMethod,
   HotelPaymentStatus,
 } from '../../common/enums/room-booking.enums';
+import { RoomBookingPaymentResponseDto } from '../../payments/dto/room-booking-payment-response.dto';
 
 export class BookingGuestResponseDto {
   @ApiProperty({ format: 'uuid' })
@@ -145,4 +146,20 @@ export class PaginatedBookingsResponseDto {
 
   @ApiProperty()
   totalPages!: number;
+}
+
+export class RoomBookingCheckoutResponseDto {
+  @ApiProperty({ type: HotelBookingResponseDto })
+  booking!: HotelBookingResponseDto;
+
+  @ApiProperty({ type: RoomBookingPaymentResponseDto })
+  payment!: RoomBookingPaymentResponseDto;
+}
+
+export class RoomBookingPaymentVerificationResponseDto {
+  @ApiProperty({ type: HotelBookingResponseDto })
+  booking!: HotelBookingResponseDto;
+
+  @ApiProperty({ type: RoomBookingPaymentResponseDto })
+  payment!: RoomBookingPaymentResponseDto;
 }

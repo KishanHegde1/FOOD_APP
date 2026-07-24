@@ -49,6 +49,12 @@ export enum HotelPaymentStatus {
 }
 
 export enum HotelPaymentMethod {
+  /**
+   * Online hotel payment handled by Razorpay. The gateway owns the UPI/card
+   * selection; this value intentionally records the gateway rather than a
+   * client-asserted payment instrument.
+   */
+  RAZORPAY = 'RAZORPAY',
   ONLINE = 'ONLINE',
   UPI = 'UPI',
   CARD = 'CARD',

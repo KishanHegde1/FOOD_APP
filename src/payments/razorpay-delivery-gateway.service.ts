@@ -55,6 +55,36 @@ export class RazorpayDeliveryGatewayService {
     };
   }
 
+  /**
+   * Uses the same server-only Razorpay credentials as delivery payments while
+   * keeping hotel booking references isolated from delivery order metadata.
+   */
+  async createRoomBookingOrder(input: {
+    amountPaise: number;
+    currency: string;
+    receipt: string;
+    paymentReference: string;
+    bookingId: string;
+    userId: string;
+  }): Promise<RazorpayDeliveryOrder> {
+    const order = await this.client().orders.create({
+      amount: input.amountPaise,
+      currency: input.currency,
+      receipt: input.receipt,
+      notes: {
+        payment_reference: input.paymentReference,
+        hotel_booking_id: input.bookingId,
+        user_id: input.userId,
+      },
+    });
+
+    return {
+      id: order.id,
+      amount: Number(order.amount),
+      currency: order.currency,
+    };
+  }
+
   async fetchPayment(paymentId: string): Promise<RazorpayDeliveryPayment> {
     const payment = await this.client().payments.fetch(paymentId);
     return {
