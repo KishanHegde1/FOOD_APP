@@ -25,6 +25,13 @@ describe('BookingsService', () => {
     city: 'Goa',
     state: null,
     country: 'India',
+    images: [
+      {
+        imageUrl: 'https://cdn.example.test/hotels/test-hotel.webp',
+        isPrimary: true,
+        sortOrder: 0,
+      },
+    ],
   } as Hotel;
   const room = {
     id: '33333333-3333-4333-8333-333333333333',
@@ -39,6 +46,13 @@ describe('BookingsService', () => {
     taxPercentage: null,
     currency: 'INR',
     cancellationPolicy: { refundable: true, freeCancellationHours: 24 },
+    images: [
+      {
+        imageUrl: 'https://cdn.example.test/rooms/deluxe.webp',
+        isPrimary: true,
+        sortOrder: 0,
+      },
+    ],
   } as HotelRoom;
 
   const bookingDto = () => ({
@@ -178,6 +192,12 @@ describe('BookingsService', () => {
     expect(result.paymentMethod).toBe(HotelPaymentMethod.PAY_AT_HOTEL);
     expect(result.paymentStatus).toBe(HotelPaymentStatus.PAY_AT_HOTEL);
     expect(result.totalAmount).toBe(2200);
+    expect(result.hotel.primaryImage).toBe(
+      'https://cdn.example.test/hotels/test-hotel.webp',
+    );
+    expect(result.room.primaryImage).toBe(
+      'https://cdn.example.test/rooms/deluxe.webp',
+    );
     expect(availabilityService.ensureAvailable).toHaveBeenCalled();
     expect(inventoryRows.map((row) => row.reservedInventory)).toEqual([1, 1]);
     expect(inventoryRepository.save).toHaveBeenCalledWith(inventoryRows);

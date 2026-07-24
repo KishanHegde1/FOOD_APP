@@ -74,6 +74,8 @@ export class BookingsService {
       .createQueryBuilder('booking')
       .leftJoinAndSelect('booking.hotel', 'hotel')
       .leftJoinAndSelect('booking.room', 'room')
+      .leftJoinAndSelect('hotel.images', 'hotelImage')
+      .leftJoinAndSelect('room.images', 'roomImage')
       .where('booking.user_id = :userId', { userId: user.id });
     if (query.status) {
       queryBuilder.andWhere('booking.booking_status = :status', {
@@ -103,7 +105,11 @@ export class BookingsService {
   ): Promise<HotelBookingResponseDto> {
     const booking = await this.bookingsRepository.findOne({
       where: { id: bookingId, userId: user.id },
-      relations: { hotel: true, room: true, guests: true },
+      relations: {
+        hotel: { images: true },
+        room: { images: true },
+        guests: true,
+      },
     });
     if (!booking) throw new NotFoundException('Booking not found.');
     return this.toResponse(booking);
@@ -402,6 +408,7 @@ export class BookingsService {
             city: booking.hotel.city,
             state: booking.hotel.state,
             country: booking.hotel.country,
+            primaryImage: primaryImageUrl(booking.hotel.images),
           }
         : { id: booking.hotelId },
       room: booking.room
@@ -410,6 +417,7 @@ export class BookingsService {
             name: booking.room.name,
             roomType: booking.room.roomType,
             bedType: booking.room.bedType,
+            primaryImage: primaryImageUrl(booking.room.images),
           }
         : { id: booking.roomId },
       guests: (booking.guests ?? []).map((guest) => ({
@@ -424,4 +432,20 @@ export class BookingsService {
       createdAt: booking.createdAt.toISOString(),
     };
   }
+}
+
+function primaryImageUrl(
+  images:
+    | Array<{ imageUrl: string; isPrimary: boolean; sortOrder: number }>
+    | undefined,
+): string | null {
+  if (!images?.length) return null;
+  const ordered = images
+    .slice()
+    .sort((left, right) => left.sortOrder - right.sortOrder);
+  return (
+    ordered.find((image) => image.isPrimary)?.imageUrl ??
+    ordered[0]?.imageUrl ??
+    null
+  );
 }

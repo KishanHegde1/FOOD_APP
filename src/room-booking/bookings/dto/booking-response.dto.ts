@@ -19,6 +19,43 @@ export class BookingGuestResponseDto {
   isPrimaryGuest!: boolean;
 }
 
+export class BookingHotelResponseDto {
+  @ApiProperty({ format: 'uuid' })
+  id!: string;
+
+  @ApiPropertyOptional()
+  name?: string;
+
+  @ApiPropertyOptional({ nullable: true })
+  city?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  state?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  country?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  primaryImage?: string | null;
+}
+
+export class BookingRoomResponseDto {
+  @ApiProperty({ format: 'uuid' })
+  id!: string;
+
+  @ApiPropertyOptional()
+  name?: string;
+
+  @ApiPropertyOptional()
+  roomType?: string;
+
+  @ApiPropertyOptional()
+  bedType?: string;
+
+  @ApiPropertyOptional({ nullable: true })
+  primaryImage?: string | null;
+}
+
 export class HotelBookingResponseDto {
   @ApiProperty({ format: 'uuid' })
   id!: string;
@@ -71,11 +108,11 @@ export class HotelBookingResponseDto {
   @ApiProperty({ type: [Object] })
   nightlyBreakdown!: Array<Record<string, unknown>>;
 
-  @ApiProperty({ type: Object })
-  hotel!: Record<string, unknown>;
+  @ApiProperty({ type: BookingHotelResponseDto })
+  hotel!: BookingHotelResponseDto;
 
-  @ApiProperty({ type: Object })
-  room!: Record<string, unknown>;
+  @ApiProperty({ type: BookingRoomResponseDto })
+  room!: BookingRoomResponseDto;
 
   @ApiProperty({ type: [BookingGuestResponseDto] })
   guests!: BookingGuestResponseDto[];
