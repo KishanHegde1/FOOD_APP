@@ -49,17 +49,6 @@ export class FirebaseLoginUserDto {
 }
 
 export class FirebaseLoginResponseDto {
-  @ApiProperty({
-    description: 'Short-lived backend JWT. Never log this value.',
-  })
-  accessToken!: string;
-
-  @ApiProperty({ example: 'Bearer' })
-  tokenType!: 'Bearer';
-
-  @ApiProperty({ example: 604800 })
-  expiresIn!: number;
-
   @ApiProperty({ type: FirebaseLoginUserDto })
   user!: FirebaseLoginUserDto;
 }

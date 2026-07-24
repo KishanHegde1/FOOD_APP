@@ -36,7 +36,7 @@ import {
 import { UsersService } from './users.service';
 
 @ApiTags('Users')
-@ApiBearerAuth('backend-auth')
+@ApiBearerAuth('firebase-auth')
 @UseGuards(FirebaseAuthGuard)
 @Controller('users')
 export class UsersController {

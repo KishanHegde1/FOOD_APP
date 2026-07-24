@@ -3,7 +3,6 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { FirebaseAdminService } from './firebase-admin.service';
 import { FirebaseAuthGuard } from './guards/firebase-auth.guard';
-import { JwtTokenService } from './jwt-token.service';
 
 describe('AuthController', () => {
   let controller: AuthController;
@@ -20,10 +19,6 @@ describe('AuthController', () => {
         {
           provide: FirebaseAdminService,
           useValue: { verifyIdToken: jest.fn() },
-        },
-        {
-          provide: JwtTokenService,
-          useValue: { verifyAccessToken: jest.fn() },
         },
       ],
     }).compile();

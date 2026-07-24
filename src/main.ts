@@ -74,16 +74,6 @@ async function bootstrap() {
         },
         'firebase-auth',
       )
-      .addBearerAuth(
-        {
-          type: 'http',
-          scheme: 'bearer',
-          bearerFormat: 'JWT',
-          description:
-            'Backend JWT returned by POST /auth/firebase-login. Firebase ID tokens remain accepted for backward compatibility.',
-        },
-        'backend-auth',
-      )
       .build();
     const document = SwaggerModule.createDocument(app, swaggerConfig);
     SwaggerModule.setup('api/docs', app, document);

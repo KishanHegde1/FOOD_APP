@@ -1,21 +1,16 @@
 import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { FirebaseAdminService } from '../firebase-admin.service';
-import { JwtTokenService } from '../jwt-token.service';
 import { FirebaseAuthGuard } from './firebase-auth.guard';
 
 describe('FirebaseAuthGuard', () => {
   const firebaseAdminService = {
     verifyIdToken: jest.fn(),
   };
-  const jwtTokenService = {
-    verifyAccessToken: jest.fn(),
-  };
   let guard: FirebaseAuthGuard;
 
   beforeEach(() => {
     guard = new FirebaseAuthGuard(
       firebaseAdminService as unknown as FirebaseAdminService,
-      jwtTokenService as unknown as JwtTokenService,
     );
     jest.clearAllMocks();
   });
@@ -39,7 +34,6 @@ describe('FirebaseAuthGuard', () => {
   });
 
   it('accepts a verified token and attaches the Firebase identity', async () => {
-    jwtTokenService.verifyAccessToken.mockResolvedValue(null);
     firebaseAdminService.verifyIdToken.mockResolvedValue({
       uid: 'firebase-uid',
       phone_number: '+919876543210',
@@ -63,26 +57,6 @@ describe('FirebaseAuthGuard', () => {
         name: 'Customer',
         picture: 'https://example.com/profile.jpg',
         emailVerified: true,
-      },
-    });
-  });
-
-  it('accepts a backend JWT without re-verifying it with Firebase', async () => {
-    jwtTokenService.verifyAccessToken.mockResolvedValue({
-      sub: 'user-id',
-      firebaseUid: 'firebase-uid',
-      phoneNumber: '+919876543210',
-      tokenType: 'access',
-    });
-    const request = { headers: { authorization: 'Bearer backend-jwt' } };
-
-    await expect(guard.canActivate(createContext(request))).resolves.toBe(true);
-
-    expect(firebaseAdminService.verifyIdToken).not.toHaveBeenCalled();
-    expect(request).toMatchObject({
-      firebaseUser: {
-        uid: 'firebase-uid',
-        phoneNumber: '+919876543210',
       },
     });
   });

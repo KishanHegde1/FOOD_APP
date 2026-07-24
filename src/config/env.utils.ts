@@ -50,7 +50,6 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     'RAZORPAY_KEY_ID',
     'RAZORPAY_KEY_SECRET',
     'RAZORPAY_WEBHOOK_SECRET',
-    'JWT_SECRET',
   ].filter((key) => !optionalEnv(env[key]));
 
   if (

@@ -5,26 +5,19 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { FirebaseAdminService } from '../firebase-admin.service';
-import { JwtTokenService } from '../jwt-token.service';
 import { AuthenticatedRequest } from '../interfaces/authenticated-request.interface';
 import { FirebaseUser } from '../interfaces/firebase-user.interface';
 
 @Injectable()
 export class FirebaseAuthGuard implements CanActivate {
-  constructor(
-    private readonly firebaseAdminService: FirebaseAdminService,
-    private readonly jwtTokenService: JwtTokenService,
-  ) {}
+  constructor(private readonly firebaseAdminService: FirebaseAdminService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const idToken = this.extractBearerToken(request.headers.authorization);
-    const backendToken = await this.jwtTokenService.verifyAccessToken(idToken);
-    const firebaseUser = backendToken
-      ? this.toFirebaseUserFromBackendToken(backendToken)
-      : this.toFirebaseUser(
-          await this.firebaseAdminService.verifyIdToken(idToken),
-        );
+    const firebaseUser = this.toFirebaseUser(
+      await this.firebaseAdminService.verifyIdToken(idToken),
+    );
 
     if (!firebaseUser.phoneNumber) {
       throw new UnauthorizedException(
@@ -68,20 +61,6 @@ export class FirebaseAuthGuard implements CanActivate {
       picture:
         typeof decodedToken.picture === 'string' ? decodedToken.picture : null,
       emailVerified: decodedToken.email_verified === true,
-    };
-  }
-
-  private toFirebaseUserFromBackendToken(token: {
-    firebaseUid: string;
-    phoneNumber: string;
-  }): FirebaseUser {
-    return {
-      uid: token.firebaseUid,
-      phoneNumber: token.phoneNumber,
-      email: null,
-      name: null,
-      picture: null,
-      emailVerified: false,
     };
   }
 }

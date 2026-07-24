@@ -11,7 +11,6 @@ import appConfig from './config/app.config';
 import { buildPostgresOptions } from './config/database-options';
 import databaseConfig from './config/database.config';
 import firebaseConfig from './config/firebase.config';
-import jwtConfig from './config/jwt.config';
 import { validateEnv } from './config/validation.schema';
 import { DineInModule } from './dine-in/dine-in.module';
 import { DiscoveryModule } from './discovery/discovery.module';
@@ -27,7 +26,7 @@ import { UsersModule } from './users/users.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, databaseConfig, firebaseConfig, jwtConfig],
+      load: [appConfig, databaseConfig, firebaseConfig],
       validate: validateEnv,
     }),
     TypeOrmModule.forRootAsync({

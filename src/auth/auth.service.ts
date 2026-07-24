@@ -3,14 +3,10 @@ import { User } from '../users/entities/user.entity';
 import { UsersService } from '../users/users.service';
 import { FirebaseLoginResponseDto } from './dto/firebase-login-response.dto';
 import { FirebaseUser } from './interfaces/firebase-user.interface';
-import { JwtTokenService } from './jwt-token.service';
 
 @Injectable()
 export class AuthService {
-  constructor(
-    private readonly usersService: UsersService,
-    private readonly jwtTokenService: JwtTokenService,
-  ) {}
+  constructor(private readonly usersService: UsersService) {}
 
   async loginWithFirebase(
     firebaseUser: FirebaseUser,
@@ -24,10 +20,7 @@ export class AuthService {
       emailVerified: firebaseUser.emailVerified,
     });
 
-    return {
-      ...(await this.jwtTokenService.issueAccessToken(user)),
-      user: this.toSafeUserProfile(user),
-    };
+    return { user: this.toSafeUserProfile(user) };
   }
 
   private toSafeUserProfile(user: User): FirebaseLoginResponseDto['user'] {
