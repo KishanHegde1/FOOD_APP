@@ -44,6 +44,20 @@ export class FoodResponseDto {
   @ApiProperty()
   isAvailable!: boolean;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    example: '12:00',
+    description: 'Optional daily local-time availability start (HH:mm).',
+  })
+  availableFromTime!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    example: '15:00',
+    description: 'Optional daily local-time availability end (HH:mm).',
+  })
+  availableUntilTime!: string | null;
+
   @ApiProperty()
   sortOrder!: number;
 
@@ -78,6 +92,8 @@ export class FoodResponseDto {
       isVeg: food.isVeg,
       isBestseller: food.isBestseller,
       isAvailable: food.isAvailable,
+      availableFromTime: food.availableFromTime,
+      availableUntilTime: food.availableUntilTime,
       sortOrder: Number(food.sortOrder),
       createdAt: food.createdAt.toISOString(),
       updatedAt: food.updatedAt.toISOString(),

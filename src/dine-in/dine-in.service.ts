@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
+import { Food } from '../foods/entities/food.entity';
 import { FoodQueryDto } from '../foods/dto/food-query.dto';
 import { FoodResponseDto } from '../foods/dto/food-response.dto';
 import { FoodsRepository } from '../foods/foods.repository';
@@ -20,6 +21,10 @@ import {
   DineInMenuCategoryResponseDto,
 } from './dto/dine-in-menu-response.dto';
 import { DineInQrScanResponseDto } from './dto/dine-in-qr-scan-response.dto';
+import {
+  DineInScannedMenuCategoryResponseDto,
+  DineInScannedMenuItemResponseDto,
+} from './dto/dine-in-qr-scan-response.dto';
 import { DineInSessionResponseDto } from './dto/dine-in-session-response.dto';
 import { JoinDineInSessionDto } from './dto/join-dine-in-session.dto';
 import { RestaurantTableResponseDto } from './dto/restaurant-table-response.dto';
@@ -32,6 +37,7 @@ import { UpdateRestaurantTableDto } from './dto/update-restaurant-table.dto';
 import { ValidateDineInQrDto } from './dto/validate-dine-in-qr.dto';
 import { DineInSessionMembersRepository } from './dine-in-session-members.repository';
 import { DineInQrService } from './dine-in-qr.service';
+import { DineInMenuAvailabilityService } from './dine-in-menu-availability.service';
 import { DineInSessionsRepository } from './dine-in-sessions.repository';
 import { DineInSessionMember } from './entities/dine-in-session-member.entity';
 import { DineInSession } from './entities/dine-in-session.entity';
@@ -52,6 +58,7 @@ export class DineInService {
     private readonly restaurantsService: RestaurantsService,
     private readonly foodsRepository: FoodsRepository,
     private readonly menuCategoriesRepository: MenuCategoriesRepository,
+    private readonly menuAvailability: DineInMenuAvailabilityService,
   ) {}
 
   async scan(
@@ -65,6 +72,11 @@ export class DineInService {
     const membership = session
       ? await this.membersRepository.findActiveMembership(session.id, user.id)
       : null;
+    const [categories, foods] = await Promise.all([
+      this.menuCategoriesRepository.findPublicByRestaurantId(restaurant.id),
+      this.foodsRepository.findActiveMenuByRestaurantId(restaurant.id),
+    ]);
+    const menu = this.toScannedMenu(categories, foods);
 
     return {
       valid: true,
@@ -72,6 +84,8 @@ export class DineInService {
         id: restaurant.id,
         name: restaurant.name,
         imageUrl: restaurant.logoUrl,
+        address: this.toRestaurantAddress(restaurant),
+        rating: Number(restaurant.rating),
       },
       table: {
         id: table.id,
@@ -83,6 +97,7 @@ export class DineInService {
         session && membership
           ? DineInSessionResponseDto.fromEntity(session, membership)
           : null,
+      ...menu,
     };
   }
 
@@ -584,6 +599,67 @@ export class DineInService {
         rawToken,
       ),
     };
+  }
+
+  private toScannedMenu(
+    categories: Awaited<
+      ReturnType<MenuCategoriesRepository['findPublicByRestaurantId']>
+    >,
+    foods: Food[],
+  ): {
+    categories: DineInScannedMenuCategoryResponseDto[];
+    uncategorizedItems: DineInScannedMenuItemResponseDto[];
+  } {
+    const mappedCategories = new Map<
+      string,
+      DineInScannedMenuCategoryResponseDto
+    >(
+      categories.map((category) => [
+        category.id,
+        {
+          id: category.id,
+          name: category.name,
+          description: category.description,
+          imageUrl: category.imageUrl,
+          sortOrder: category.sortOrder,
+          items: [],
+        },
+      ]),
+    );
+    const uncategorizedItems: DineInScannedMenuItemResponseDto[] = [];
+
+    for (const food of foods) {
+      const item: DineInScannedMenuItemResponseDto = {
+        ...FoodResponseDto.fromEntity(food),
+        isAvailable: this.menuAvailability.isAvailableNow(food),
+        availability: this.menuAvailability.getAvailability(food),
+      };
+      const category = food.categoryId
+        ? mappedCategories.get(food.categoryId)
+        : undefined;
+      if (category) {
+        category.items.push(item);
+      } else {
+        uncategorizedItems.push(item);
+      }
+    }
+
+    return {
+      categories: [...mappedCategories.values()],
+      uncategorizedItems,
+    };
+  }
+
+  private toRestaurantAddress(restaurant: Restaurant): string {
+    return [
+      restaurant.addressLine,
+      restaurant.locality,
+      restaurant.city,
+      restaurant.state,
+      restaurant.postalCode,
+    ]
+      .filter((part): part is string => Boolean(part?.trim()))
+      .join(', ');
   }
 
   private isUniqueConstraintViolation(error: unknown): boolean {

@@ -19,6 +19,7 @@ import { StartDineInSessionDto } from './dto/start-dine-in-session.dto';
 import { ValidateDineInQrDto } from './dto/validate-dine-in-qr.dto';
 import { DineInSessionMembersRepository } from './dine-in-session-members.repository';
 import { DineInQrService } from './dine-in-qr.service';
+import { DineInMenuAvailabilityService } from './dine-in-menu-availability.service';
 import { DineInSessionsRepository } from './dine-in-sessions.repository';
 import { DineInService } from './dine-in.service';
 import { DineInSessionMember } from './entities/dine-in-session-member.entity';
@@ -95,6 +96,7 @@ describe('DineInService', () => {
       findByRestaurantId: jest
         .fn()
         .mockResolvedValue({ items: [food()], total: 1 }),
+      findActiveMenuByRestaurantId: jest.fn().mockResolvedValue([food()]),
     };
     categoriesRepository = {
       findPublicByRestaurantId: jest.fn().mockResolvedValue([category()]),
@@ -107,6 +109,7 @@ describe('DineInService', () => {
       restaurantsService as unknown as RestaurantsService,
       foodsRepository as unknown as FoodsRepository,
       categoriesRepository as unknown as MenuCategoriesRepository,
+      new DineInMenuAvailabilityService(),
     );
   });
 
@@ -118,6 +121,7 @@ describe('DineInService', () => {
       restaurant: { id: RESTAURANT_ID, name: 'Good Food' },
       table: { id: TABLE_ID, tableNumber: 'T01', capacity: 4 },
       activeSession: null,
+      categories: [{ name: 'Starters', items: [{ name: 'Vegetable Soup' }] }],
     });
     expect(JSON.stringify(response)).not.toContain(RAW_TOKEN);
     expect(response).not.toHaveProperty('qrTokenHash');

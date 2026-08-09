@@ -24,6 +24,7 @@ import { DineInOrdersService } from './dine-in-orders.service';
 import { DineInOrdersController } from './dine-in-orders.controller';
 import { DineInSessionMembersRepository } from './dine-in-session-members.repository';
 import { DineInQrService } from './dine-in-qr.service';
+import { DineInMenuAvailabilityService } from './dine-in-menu-availability.service';
 import { DineInSessionsRepository } from './dine-in-sessions.repository';
 import { DineInController } from './dine-in.controller';
 import { DineInService } from './dine-in.service';
@@ -79,6 +80,7 @@ import { RazorpayWebhookController } from './razorpay-webhook.controller';
     DineInSessionsRepository,
     DineInSessionMembersRepository,
     DineInQrService,
+    DineInMenuAvailabilityService,
     DineInService,
     DineInOrdersRepository,
     DineInOrdersService,

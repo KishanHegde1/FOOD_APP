@@ -133,6 +133,10 @@ export class FoodsService {
     await this.ensureValidCategory(dto.categoryId, restaurant.id);
     this.ensurePriceRelationship(dto.pricePaise, dto.originalPricePaise);
     this.ensurePureVegCompatibility(restaurant, dto.isVeg);
+    const availabilityWindow = this.resolveAvailabilityWindow(
+      dto.availableFromTime,
+      dto.availableUntilTime,
+    );
 
     const name = dto.name.trim();
     const duplicateFood = await this.foodsRepository.findByNameInRestaurant(
@@ -159,6 +163,8 @@ export class FoodsService {
       isVeg: dto.isVeg,
       isBestseller: dto.isBestseller ?? false,
       isAvailable: true,
+      availableFromTime: availabilityWindow.from,
+      availableUntilTime: availabilityWindow.until,
       isActive: true,
       sortOrder: dto.sortOrder ?? 0,
     });
@@ -202,6 +208,14 @@ export class FoodsService {
         : food.originalPricePaise;
     this.ensurePriceRelationship(pricePaise, originalPricePaise);
     this.ensurePureVegCompatibility(restaurant, dto.isVeg ?? food.isVeg);
+    const availabilityWindow = this.resolveAvailabilityWindow(
+      dto.availableFromTime !== undefined
+        ? dto.availableFromTime
+        : food.availableFromTime,
+      dto.availableUntilTime !== undefined
+        ? dto.availableUntilTime
+        : food.availableUntilTime,
+    );
 
     if (dto.categoryId !== undefined) food.categoryId = dto.categoryId;
     if (name !== undefined) food.name = name;
@@ -216,6 +230,8 @@ export class FoodsService {
       food.preparationMinutes = dto.preparationMinutes;
     if (dto.isVeg !== undefined) food.isVeg = dto.isVeg;
     if (dto.isBestseller !== undefined) food.isBestseller = dto.isBestseller;
+    food.availableFromTime = availabilityWindow.from;
+    food.availableUntilTime = availabilityWindow.until;
     if (dto.sortOrder !== undefined) food.sortOrder = dto.sortOrder;
 
     return FoodResponseDto.fromEntity(await this.saveFood(food));
@@ -386,6 +402,28 @@ export class FoodsService {
 
   private toNullableText(value: string | null | undefined): string | null {
     return value?.trim() || null;
+  }
+
+  private resolveAvailabilityWindow(
+    from: string | null | undefined,
+    until: string | null | undefined,
+  ): { from: string | null; until: string | null } {
+    const normalizedFrom = this.toNullableText(from);
+    const normalizedUntil = this.toNullableText(until);
+    if (!normalizedFrom && !normalizedUntil) {
+      return { from: null, until: null };
+    }
+    if (!normalizedFrom || !normalizedUntil) {
+      throw new BadRequestException(
+        'availableFromTime and availableUntilTime must be provided together.',
+      );
+    }
+    if (normalizedFrom === normalizedUntil) {
+      throw new BadRequestException(
+        'availableFromTime and availableUntilTime must be different.',
+      );
+    }
+    return { from: normalizedFrom, until: normalizedUntil };
   }
 
   private async saveFood(food: Food): Promise<Food> {

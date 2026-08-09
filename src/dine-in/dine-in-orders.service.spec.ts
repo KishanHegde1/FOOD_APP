@@ -15,6 +15,7 @@ import { DineInOrderStatus } from './enums/dine-in-order-status.enum';
 import { DineInSessionStatus } from './enums/dine-in-session-status.enum';
 import { OrderStatus, OrderType } from './enums/order.enums';
 import { RestaurantTablesRepository } from './restaurant-tables.repository';
+import { DineInMenuAvailabilityService } from './dine-in-menu-availability.service';
 
 type TransactionOperation = (manager: object) => Promise<unknown>;
 
@@ -22,6 +23,7 @@ describe('DineInOrdersService', () => {
   let service: DineInOrdersService;
   let ordersRepository: Record<string, jest.Mock>;
   let membersRepository: Record<string, jest.Mock>;
+  let menuAvailability: Record<string, jest.Mock>;
 
   beforeEach(() => {
     ordersRepository = {
@@ -73,11 +75,15 @@ describe('DineInOrdersService', () => {
     const restaurantsService: Record<string, jest.Mock> = {
       findOneForManagement: jest.fn().mockResolvedValue(restaurant()),
     };
+    menuAvailability = {
+      isAvailableNow: jest.fn().mockReturnValue(true),
+    };
     service = new DineInOrdersService(
       ordersRepository as unknown as DineInOrdersRepository,
       membersRepository as unknown as DineInSessionMembersRepository,
       tablesRepository as unknown as RestaurantTablesRepository,
       restaurantsService as unknown as RestaurantsService,
+      menuAvailability as unknown as DineInMenuAvailabilityService,
     );
   });
 
@@ -124,6 +130,15 @@ describe('DineInOrdersService', () => {
     ordersRepository.findFoodsByIds.mockResolvedValue([
       food({ isAvailable: false }),
     ]);
+
+    await expect(
+      service.create(customer(), SESSION_ID, createDto()),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(ordersRepository.createOrder).not.toHaveBeenCalled();
+  });
+
+  it('rejects a food outside its configured service window before saving an order', async () => {
+    menuAvailability.isAvailableNow.mockReturnValue(false);
 
     await expect(
       service.create(customer(), SESSION_ID, createDto()),

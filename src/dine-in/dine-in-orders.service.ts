@@ -24,6 +24,7 @@ import { DineInOrdersRepository } from './dine-in-orders.repository';
 import { DineInSession } from './entities/dine-in-session.entity';
 import { Order } from './entities/order.entity';
 import { RestaurantTablesRepository } from './restaurant-tables.repository';
+import { DineInMenuAvailabilityService } from './dine-in-menu-availability.service';
 import { DineInOrderStatus } from './enums/dine-in-order-status.enum';
 import { DineInSessionStatus } from './enums/dine-in-session-status.enum';
 import {
@@ -41,6 +42,7 @@ export class DineInOrdersService {
     private readonly membersRepository: DineInSessionMembersRepository,
     private readonly tablesRepository: RestaurantTablesRepository,
     private readonly restaurantsService: RestaurantsService,
+    private readonly menuAvailability: DineInMenuAvailabilityService,
   ) {}
 
   async create(
@@ -330,6 +332,7 @@ export class DineInOrdersService {
             ? foods.find((food) => food.id === item.foodItemId)
             : undefined,
           order.restaurantId,
+          false,
         );
       order.dineInStatus = DineInOrderStatus.APPROVED;
       order.orderStatus = OrderStatus.ACCEPTED;
@@ -476,11 +479,17 @@ export class DineInOrdersService {
   private ensureFood(
     food: Food | undefined,
     restaurantId: string,
+    requireCurrentServiceWindow = true,
   ): asserts food is Food {
     if (!food) throw new NotFoundException('FOOD_ITEM_NOT_FOUND');
     if (food.restaurantId !== restaurantId)
       throw new BadRequestException('FOOD_ITEM_RESTAURANT_MISMATCH');
-    if (!food.isActive || !food.isAvailable)
+    if (
+      !food.isActive ||
+      !food.isAvailable ||
+      (requireCurrentServiceWindow &&
+        !this.menuAvailability.isAvailableNow(food))
+    )
       throw new ConflictException('FOOD_ITEM_UNAVAILABLE');
   }
   private ensureCustomer(user: User): void {

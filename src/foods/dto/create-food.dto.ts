@@ -8,6 +8,7 @@ import {
   IsUUID,
   Max,
   MaxLength,
+  Matches,
   Min,
   MinLength,
   Validate,
@@ -121,6 +122,34 @@ export class CreateFoodDto {
   @IsOptional()
   @IsBoolean()
   isBestseller?: boolean;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    example: '12:00',
+    description:
+      'Optional daily local-time availability start in 24-hour HH:mm format. Set both time fields or neither.',
+  })
+  @Transform(trimString)
+  @IsOptional()
+  @IsString()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, {
+    message: 'availableFromTime must use HH:mm format.',
+  })
+  availableFromTime?: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    example: '15:00',
+    description:
+      'Optional daily local-time availability end in 24-hour HH:mm format. Set both time fields or neither.',
+  })
+  @Transform(trimString)
+  @IsOptional()
+  @IsString()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, {
+    message: 'availableUntilTime must use HH:mm format.',
+  })
+  availableUntilTime?: string | null;
 
   @ApiPropertyOptional({ default: 0, minimum: 0 })
   @Type(() => Number)

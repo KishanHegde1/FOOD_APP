@@ -62,6 +62,16 @@ export class Food {
   @Column({ name: 'is_available', type: 'boolean', default: true })
   isAvailable!: boolean;
 
+  /**
+   * Optional daily service window for this item in the restaurant's local time.
+   * A null pair means the item can be ordered throughout the day.
+   */
+  @Column({ name: 'available_from_time', type: 'time', nullable: true })
+  availableFromTime!: string | null;
+
+  @Column({ name: 'available_until_time', type: 'time', nullable: true })
+  availableUntilTime!: string | null;
+
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive!: boolean;
 
