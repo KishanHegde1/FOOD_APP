@@ -70,12 +70,12 @@ export class DineInOrdersRepository {
   async lockOrder(id: string, manager: EntityManager): Promise<Order | null> {
     return (
       (await this.orderRepo(manager)
-        .createQueryBuilder('order')
-        .leftJoinAndSelect('order.items', 'items')
-        .leftJoinAndSelect('order.dineInSession', 'session')
-        .leftJoinAndSelect('order.restaurantTable', 'table')
-        .where('order.id = :id', { id })
-        .setLock('pessimistic_write')
+        .createQueryBuilder('locked_order')
+        .leftJoinAndSelect('locked_order.items', 'items')
+        .leftJoinAndSelect('locked_order.dineInSession', 'session')
+        .leftJoinAndSelect('locked_order.restaurantTable', 'table')
+        .where('locked_order.id = :id', { id })
+        .setLock('pessimistic_write', undefined, ['locked_order'])
         .getOne()) ?? null
     );
   }
