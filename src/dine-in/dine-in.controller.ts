@@ -35,7 +35,9 @@ import { DineInMenuResponseDto } from './dto/dine-in-menu-response.dto';
 import { DineInQrScanResponseDto } from './dto/dine-in-qr-scan-response.dto';
 import { DineInSessionResponseDto } from './dto/dine-in-session-response.dto';
 import { JoinDineInSessionDto } from './dto/join-dine-in-session.dto';
+import { ResolveDineInQrPayloadDto } from './dto/resolve-dine-in-qr-payload.dto';
 import { StartDineInSessionDto } from './dto/start-dine-in-session.dto';
+import { StartDineInSessionFromQrDto } from './dto/start-dine-in-session-from-qr.dto';
 import { ValidateDineInQrDto } from './dto/validate-dine-in-qr.dto';
 import { DineInService } from './dine-in.service';
 
@@ -79,6 +81,54 @@ export class DineInController {
     );
   }
 
+  @Post('scan/resolve')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({
+    summary:
+      'Resolve the raw foodapp:// Dine-In QR value from a mobile scanner',
+  })
+  @ApiOkResponse({ type: DineInQrScanResponseDto })
+  @ApiBadRequestResponse({ description: 'INVALID_QR.' })
+  @ApiConflictResponse({
+    description: 'TABLE_INACTIVE or RESTAURANT_INACTIVE.',
+  })
+  async resolveScanPayload(
+    @CurrentFirebaseUser() firebaseUser: FirebaseUser,
+    @Body() dto: ResolveDineInQrPayloadDto,
+  ): Promise<DineInQrScanResponseDto> {
+    return this.dineInService.scanQrPayload(
+      await this.usersService.findActiveByFirebaseUid(firebaseUser.uid),
+      dto.qrPayload,
+    );
+  }
+
+  @Get('scan/:qrToken')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({
+    summary: 'Resolve a Dine-In table menu from an opaque QR token',
+  })
+  @ApiOkResponse({ type: DineInQrScanResponseDto })
+  @ApiBadRequestResponse({ description: 'INVALID_QR.' })
+  @ApiUnauthorizedResponse({
+    description: 'Firebase authentication is required.',
+  })
+  @ApiForbiddenResponse({
+    description: 'Only active customers can scan dine-in QR codes.',
+  })
+  @ApiNotFoundResponse({ description: 'TABLE_NOT_FOUND.' })
+  @ApiTooManyRequestsResponse({ description: 'Too many QR scans.' })
+  async scanByToken(
+    @CurrentFirebaseUser() firebaseUser: FirebaseUser,
+    @Param('qrToken') qrToken: string,
+  ): Promise<DineInQrScanResponseDto> {
+    return this.dineInService.scanByToken(
+      await this.usersService.findActiveByFirebaseUid(firebaseUser.uid),
+      qrToken,
+    );
+  }
+
   @Post('sessions')
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
@@ -104,6 +154,28 @@ export class DineInController {
     @Body() dto: StartDineInSessionDto,
   ): Promise<DineInSessionResponseDto> {
     return this.dineInService.startSession(
+      await this.usersService.findActiveByFirebaseUid(firebaseUser.uid),
+      dto,
+    );
+  }
+
+  @Post('sessions/from-qr')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @ApiOperation({
+    summary: 'Start, join, or resume a table session using raw scanner QR text',
+  })
+  @ApiCreatedResponse({ type: DineInSessionResponseDto })
+  @ApiBadRequestResponse({ description: 'INVALID_QR or invalid guest count.' })
+  @ApiConflictResponse({
+    description:
+      'USER_ALREADY_IN_ANOTHER_ACTIVE_SESSION, SESSION_NOT_ACTIVE, or table capacity conflict.',
+  })
+  async startSessionFromQr(
+    @CurrentFirebaseUser() firebaseUser: FirebaseUser,
+    @Body() dto: StartDineInSessionFromQrDto,
+  ): Promise<DineInSessionResponseDto> {
+    return this.dineInService.startSessionFromQrPayload(
       await this.usersService.findActiveByFirebaseUid(firebaseUser.uid),
       dto,
     );

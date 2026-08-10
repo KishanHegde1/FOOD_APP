@@ -48,6 +48,7 @@ describe('DineInService', () => {
         table(data, qrService),
       ),
       findById: jest.fn().mockResolvedValue(table({}, qrService)),
+      findByQrHash: jest.fn().mockResolvedValue(table({}, qrService)),
       findByRestaurantAndTableNumber: jest.fn().mockResolvedValue(null),
       listByRestaurant: jest.fn().mockResolvedValue([]),
       lockById: jest.fn().mockResolvedValue(table({}, qrService)),
@@ -125,6 +126,37 @@ describe('DineInService', () => {
     });
     expect(JSON.stringify(response)).not.toContain(RAW_TOKEN);
     expect(response).not.toHaveProperty('qrTokenHash');
+  });
+
+  it('resolves a QR token to its saved table without exposing the token', async () => {
+    const response = await service.scanByToken(customer(), RAW_TOKEN);
+
+    expect(tablesRepository.findByQrHash).toHaveBeenCalledWith(
+      qrService.hashToken(RAW_TOKEN),
+    );
+    expect(response.table).toMatchObject({
+      id: TABLE_ID,
+      tableNumber: 'T01',
+    });
+    expect(JSON.stringify(response)).not.toContain(RAW_TOKEN);
+  });
+
+  it('resolves the complete mobile-scanner deep link without exposing its token', async () => {
+    const deepLink = qrService.createDeepLink(
+      RESTAURANT_ID,
+      TABLE_ID,
+      1,
+      RAW_TOKEN,
+    );
+
+    const response = await service.scanQrPayload(customer(), deepLink);
+
+    expect(response).toMatchObject({
+      valid: true,
+      restaurant: { id: RESTAURANT_ID },
+      table: { id: TABLE_ID },
+    });
+    expect(JSON.stringify(response)).not.toContain(RAW_TOKEN);
   });
 
   it.each([

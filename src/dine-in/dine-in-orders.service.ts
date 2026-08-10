@@ -17,6 +17,10 @@ import {
 } from './dto/dine-in-order-response.dto';
 import { ManagerDineInOrderListQueryDto } from './dto/manager-dine-in-order-list-query.dto';
 import { RejectDineInOrderDto } from './dto/reject-dine-in-order.dto';
+import {
+  DineInKitchenStatusUpdate,
+  UpdateDineInKitchenStatusDto,
+} from './dto/update-dine-in-kitchen-status.dto';
 import { DineInSessionOrdersQueryDto } from './dto/dine-in-session-orders-query.dto';
 import { DineInSessionOrderSummaryDto } from './dto/dine-in-session-order-summary.dto';
 import { DineInSessionMembersRepository } from './dine-in-session-members.repository';
@@ -400,6 +404,74 @@ export class DineInOrdersService {
       return DineInOrderResponseDto.fromEntity(saved);
     });
   }
+
+  async updateKitchenStatus(
+    user: User,
+    restaurantId: string,
+    orderId: string,
+    dto: UpdateDineInKitchenStatusDto,
+  ): Promise<DineInOrderResponseDto> {
+    await this.requireManagedRestaurant(user, restaurantId);
+    return this.ordersRepository.transaction(async (manager) => {
+      const order = await this.requireLockedDineInOrder(orderId, manager);
+      this.requireOrderRestaurant(order, restaurantId);
+      const targetStatus: DineInOrderStatus = {
+        [DineInKitchenStatusUpdate.PREPARING]: DineInOrderStatus.PREPARING,
+        [DineInKitchenStatusUpdate.READY]: DineInOrderStatus.READY,
+        [DineInKitchenStatusUpdate.SERVED]: DineInOrderStatus.SERVED,
+      }[dto.status];
+
+      if (order.dineInStatus === targetStatus) {
+        return DineInOrderResponseDto.fromEntity(order);
+      }
+      if (!this.canTransitionKitchenStatus(order.dineInStatus, targetStatus)) {
+        throw new ConflictException('INVALID_KITCHEN_STATUS_TRANSITION');
+      }
+
+      const ticket = await this.ordersRepository.lockTicketByOrderId(
+        order.id,
+        manager,
+      );
+      if (!ticket) throw new NotFoundException('KITCHEN_TICKET_NOT_FOUND');
+
+      const now = new Date();
+      const previousOrderStatus = order.orderStatus;
+      order.dineInStatus = targetStatus;
+      ticket.status = targetStatus;
+
+      if (targetStatus === DineInOrderStatus.PREPARING) {
+        order.orderStatus = OrderStatus.PREPARING;
+        order.preparationStartedAt = now;
+        ticket.acceptedByUserId ??= user.id;
+        ticket.acceptedAt ??= now;
+        ticket.preparationStartedAt = now;
+      }
+      if (targetStatus === DineInOrderStatus.READY) {
+        order.orderStatus = OrderStatus.READY_FOR_PICKUP;
+        order.preparedAt = now;
+        order.readyAt = now;
+        ticket.readyAt = now;
+      }
+      if (targetStatus === DineInOrderStatus.SERVED) {
+        order.orderStatus = OrderStatus.DELIVERED;
+        order.deliveredAt = now;
+        order.servedAt = now;
+        ticket.servedAt = now;
+      }
+
+      const saved = await this.ordersRepository.saveOrder(order, manager);
+      await this.ordersRepository.saveTicket(ticket, manager);
+      await this.addHistory(
+        saved.id,
+        previousOrderStatus,
+        saved.orderStatus,
+        user.id,
+        `DINE_IN_STATUS:${targetStatus}`,
+        manager,
+      );
+      return DineInOrderResponseDto.fromEntity(saved);
+    });
+  }
   private async requireDineInOrder(id: string): Promise<Order> {
     const order = await this.ordersRepository.findDetailedById(id);
     if (!order || order.orderType !== OrderType.DINE_IN)
@@ -516,6 +588,20 @@ export class DineInOrdersService {
   private requireOrderRestaurant(order: Order, restaurantId: string): void {
     if (order.restaurantId !== restaurantId)
       throw new NotFoundException('ORDER_NOT_FOUND');
+  }
+
+  private canTransitionKitchenStatus(
+    currentStatus: DineInOrderStatus | null,
+    targetStatus: DineInOrderStatus,
+  ): boolean {
+    return (
+      (currentStatus === DineInOrderStatus.APPROVED &&
+        targetStatus === DineInOrderStatus.PREPARING) ||
+      (currentStatus === DineInOrderStatus.PREPARING &&
+        targetStatus === DineInOrderStatus.READY) ||
+      (currentStatus === DineInOrderStatus.READY &&
+        targetStatus === DineInOrderStatus.SERVED)
+    );
   }
   private paginated(
     result: { items: Order[]; total: number },

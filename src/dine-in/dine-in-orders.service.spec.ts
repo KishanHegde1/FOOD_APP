@@ -16,6 +16,7 @@ import { DineInSessionStatus } from './enums/dine-in-session-status.enum';
 import { OrderStatus, OrderType } from './enums/order.enums';
 import { RestaurantTablesRepository } from './restaurant-tables.repository';
 import { DineInMenuAvailabilityService } from './dine-in-menu-availability.service';
+import { DineInKitchenStatusUpdate } from './dto/update-dine-in-kitchen-status.dto';
 
 type TransactionOperation = (manager: object) => Promise<unknown>;
 
@@ -45,6 +46,16 @@ describe('DineInOrdersService', () => {
       saveHistory: jest.fn((entry: object) => Promise.resolve(entry)),
       lockOrder: jest.fn().mockResolvedValue(order()),
       findTicketByOrderId: jest.fn().mockResolvedValue(null),
+      lockTicketByOrderId: jest.fn().mockResolvedValue({
+        id: 'ticket-1',
+        orderId: ORDER_ID,
+        status: DineInOrderStatus.APPROVED,
+        acceptedByUserId: null,
+        acceptedAt: null,
+        preparationStartedAt: null,
+        readyAt: null,
+        servedAt: null,
+      }),
       createTicket: jest.fn((ticket: object) => ticket),
       saveTicket: jest.fn((ticket: object) => Promise.resolve(ticket)),
       listForSession: jest
@@ -172,6 +183,42 @@ describe('DineInOrdersService', () => {
       }),
       expect.anything(),
     );
+  });
+
+  it('advances an approved order to preparing and records the kitchen operator', async () => {
+    const approvedOrder = order({
+      dineInStatus: DineInOrderStatus.APPROVED,
+      orderStatus: OrderStatus.ACCEPTED,
+    });
+    ordersRepository.lockOrder.mockResolvedValue(approvedOrder);
+
+    await expect(
+      service.updateKitchenStatus(owner(), RESTAURANT_ID, ORDER_ID, {
+        status: DineInKitchenStatusUpdate.PREPARING,
+      }),
+    ).resolves.toMatchObject({ status: DineInOrderStatus.PREPARING });
+
+    expect(approvedOrder.orderStatus).toBe(OrderStatus.PREPARING);
+    expect(approvedOrder.preparationStartedAt).toBeInstanceOf(Date);
+    expect(ordersRepository.saveTicket).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: DineInOrderStatus.PREPARING,
+        acceptedByUserId: OWNER_ID,
+      }),
+      expect.anything(),
+    );
+  });
+
+  it('rejects skipping a kitchen status in the workflow', async () => {
+    ordersRepository.lockOrder.mockResolvedValue(
+      order({ dineInStatus: DineInOrderStatus.APPROVED }),
+    );
+
+    await expect(
+      service.updateKitchenStatus(owner(), RESTAURANT_ID, ORDER_ID, {
+        status: DineInKitchenStatusUpdate.READY,
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 
   it('returns paginated historical rounds to a former session member', async () => {

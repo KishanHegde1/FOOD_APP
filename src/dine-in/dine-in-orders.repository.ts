@@ -166,6 +166,19 @@ export class DineInOrdersRepository {
       (await this.ticketRepo(manager).findOne({ where: { orderId } })) ?? null
     );
   }
+
+  async lockTicketByOrderId(
+    orderId: string,
+    manager: EntityManager,
+  ): Promise<KitchenTicket | null> {
+    return (
+      (await this.ticketRepo(manager)
+        .createQueryBuilder('ticket')
+        .where('ticket.order_id = :orderId', { orderId })
+        .setLock('pessimistic_write')
+        .getOne()) ?? null
+    );
+  }
   createTicket(
     data: DeepPartial<KitchenTicket>,
     manager: EntityManager,

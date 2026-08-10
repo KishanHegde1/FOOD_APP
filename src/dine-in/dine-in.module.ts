@@ -9,6 +9,8 @@ import { RestaurantsModule } from '../restaurants/restaurants.module';
 import { User } from '../users/entities/user.entity';
 import { UsersModule } from '../users/users.module';
 import { DineInManagementController } from './dine-in-management.controller';
+import { DineInManagerDashboardController } from './dine-in-manager-dashboard.controller';
+import { DineInManagerDashboardService } from './dine-in-manager-dashboard.service';
 import { DineInOrdersManagementController } from './dine-in-orders-management.controller';
 import { DineInInvoicesManagementController } from './dine-in-invoices-management.controller';
 import { DineInInvoicesController } from './dine-in-invoices.controller';
@@ -66,6 +68,7 @@ import { RazorpayWebhookController } from './razorpay-webhook.controller';
   controllers: [
     DineInController,
     DineInManagementController,
+    DineInManagerDashboardController,
     DineInOrdersController,
     DineInOrdersManagementController,
     DineInSessionHistoryManagementController,
@@ -81,6 +84,7 @@ import { RazorpayWebhookController } from './razorpay-webhook.controller';
     DineInSessionMembersRepository,
     DineInQrService,
     DineInMenuAvailabilityService,
+    DineInManagerDashboardService,
     DineInService,
     DineInOrdersRepository,
     DineInOrdersService,

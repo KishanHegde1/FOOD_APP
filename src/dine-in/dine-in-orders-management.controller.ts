@@ -28,6 +28,7 @@ import {
 } from './dto/dine-in-order-response.dto';
 import { ManagerDineInOrderListQueryDto } from './dto/manager-dine-in-order-list-query.dto';
 import { RejectDineInOrderDto } from './dto/reject-dine-in-order.dto';
+import { UpdateDineInKitchenStatusDto } from './dto/update-dine-in-kitchen-status.dto';
 import { DineInOrdersService } from './dine-in-orders.service';
 
 @ApiTags('Dine-In Order Management')
@@ -104,6 +105,31 @@ export class DineInOrdersManagementController {
     @Body() dto: RejectDineInOrderDto,
   ): Promise<DineInOrderResponseDto> {
     return this.ordersService.reject(
+      await this.usersService.findActiveByFirebaseUid(firebaseUser.uid),
+      restaurantId,
+      orderId,
+      dto,
+    );
+  }
+
+  @Post(':orderId/kitchen-status')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @ApiOperation({
+    summary: 'Advance an approved dine-in order through the kitchen workflow',
+  })
+  @ApiOkResponse({ type: DineInOrderResponseDto })
+  @ApiConflictResponse({
+    description:
+      'INVALID_KITCHEN_STATUS_TRANSITION. Valid flow: APPROVED → PREPARING → READY → SERVED.',
+  })
+  async updateKitchenStatus(
+    @CurrentFirebaseUser() firebaseUser: FirebaseUser,
+    @Param('restaurantId', new ParseUUIDPipe()) restaurantId: string,
+    @Param('orderId', new ParseUUIDPipe()) orderId: string,
+    @Body() dto: UpdateDineInKitchenStatusDto,
+  ): Promise<DineInOrderResponseDto> {
+    return this.ordersService.updateKitchenStatus(
       await this.usersService.findActiveByFirebaseUid(firebaseUser.uid),
       restaurantId,
       orderId,

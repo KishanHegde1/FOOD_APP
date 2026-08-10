@@ -29,6 +29,7 @@ import { DineInSessionResponseDto } from './dto/dine-in-session-response.dto';
 import { JoinDineInSessionDto } from './dto/join-dine-in-session.dto';
 import { RestaurantTableResponseDto } from './dto/restaurant-table-response.dto';
 import { StartDineInSessionDto } from './dto/start-dine-in-session.dto';
+import { StartDineInSessionFromQrDto } from './dto/start-dine-in-session-from-qr.dto';
 import {
   TableQrMetadataResponseDto,
   TableQrResponseDto,
@@ -99,6 +100,46 @@ export class DineInService {
           : null,
       ...menu,
     };
+  }
+
+  async scanByToken(
+    user: User,
+    rawQrToken: string,
+  ): Promise<DineInQrScanResponseDto> {
+    this.ensureCustomer(user);
+    const token = rawQrToken.trim();
+    if (!token || token.length > 512) {
+      throw new BadRequestException('INVALID_QR');
+    }
+    const table = await this.restaurantTablesRepository.findByQrHash(
+      this.qrService.hashToken(token),
+    );
+    if (!table) {
+      throw new NotFoundException('TABLE_NOT_FOUND');
+    }
+    return this.scan(user, {
+      restaurantId: table.restaurantId,
+      tableId: table.id,
+      token,
+      version: table.qrTokenVersion,
+    });
+  }
+
+  async scanQrPayload(
+    user: User,
+    qrPayload: string,
+  ): Promise<DineInQrScanResponseDto> {
+    return this.scan(user, this.parseQrPayload(qrPayload));
+  }
+
+  async startSessionFromQrPayload(
+    user: User,
+    dto: StartDineInSessionFromQrDto,
+  ): Promise<DineInSessionResponseDto> {
+    return this.startSession(user, {
+      ...this.parseQrPayload(dto.qrPayload),
+      guestCount: dto.guestCount,
+    });
   }
 
   async startSession(
@@ -465,6 +506,12 @@ export class DineInService {
       throw new NotFoundException('TABLE_NOT_FOUND');
     }
     return table;
+  }
+
+  private parseQrPayload(qrPayload: string): ValidateDineInQrDto {
+    const dto = this.qrService.parseDeepLink(qrPayload);
+    if (!dto) throw new BadRequestException('INVALID_QR');
+    return dto;
   }
 
   private async requireLockedTable(
