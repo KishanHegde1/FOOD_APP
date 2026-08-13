@@ -28,6 +28,7 @@ import { CurrentFirebaseUser } from '../auth/decorators/current-firebase-user.de
 import { FirebaseAuthGuard } from '../auth/guards/firebase-auth.guard';
 import type { FirebaseUser } from '../auth/interfaces/firebase-user.interface';
 import { UsersService } from '../users/users.service';
+import { CancelDineInPaymentDto } from './dto/cancel-dine-in-payment.dto';
 import { DineInPaymentListQueryDto } from './dto/dine-in-payment-list-query.dto';
 import {
   DineInPaymentResponseDto,
@@ -128,6 +129,30 @@ export class DineInPaymentsController {
     return this.paymentsService.getForCustomer(
       await this.usersService.findActiveByFirebaseUid(firebaseUser.uid),
       paymentId,
+    );
+  }
+
+  @Post('payments/:paymentId/cancel')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({
+    summary: 'Cancel an open online Dine-In payment attempt',
+    description:
+      'Only the customer who created the payment may cancel it. The invoice and table session remain payable.',
+  })
+  @ApiOkResponse({ type: DineInPaymentResponseDto })
+  @ApiNotFoundResponse({ description: 'PAYMENT_NOT_FOUND.' })
+  @ApiConflictResponse({ description: 'PAYMENT_CANCELLATION_NOT_ALLOWED.' })
+  async cancel(
+    @CurrentFirebaseUser() firebaseUser: FirebaseUser,
+    @Param('paymentId', new ParseUUIDPipe()) paymentId: string,
+    @Body() dto?: CancelDineInPaymentDto,
+  ): Promise<DineInPaymentResponseDto> {
+    return this.paymentsService.cancel(
+      await this.usersService.findActiveByFirebaseUid(firebaseUser.uid),
+      paymentId,
+      dto ?? {},
     );
   }
 

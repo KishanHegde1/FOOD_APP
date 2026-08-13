@@ -1,7 +1,9 @@
 import {
+  BadGatewayException,
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  NotFoundException,
 } from '@nestjs/common';
 import { DineInPaymentsRepository } from './dine-in-payments.repository';
 import { DineInPaymentsService } from './dine-in-payments.service';
@@ -71,6 +73,7 @@ describe('DineInPaymentsService', () => {
         status: 'captured',
         captured: true,
       }),
+      fetchOrderPayments: jest.fn().mockResolvedValue([]),
       verifyWebhookSignature: jest.fn().mockReturnValue(true),
     };
     restaurants = {
@@ -164,6 +167,153 @@ describe('DineInPaymentsService', () => {
     expect(result.checkout).toEqual(
       expect.objectContaining({ orderId: 'order_test', amountPaise: 70250 }),
     );
+    expect(result.gateway).toBe('RAZORPAY');
+    expect(result.gatewayOrderId).toBe('order_test');
+    expect(result.restaurantName).toBe('Green Garden Dine-In');
+    expect(result.tableNumber).toBe('T13');
+    expect(result).not.toHaveProperty('gatewaySignature');
+  });
+
+  it('cancels an owned open online payment while keeping invoice and session payable', async () => {
+    const onlinePayment = payment({
+      method: PaymentMethod.UPI,
+      gateway: 'RAZORPAY',
+      gatewayOrderId: 'order_test',
+      status: PaymentStatus.PENDING,
+    });
+    repository.findForCustomer.mockResolvedValue(onlinePayment);
+    repository.lockPayment.mockResolvedValue(onlinePayment);
+
+    const result = await service.cancel(customer(), PAYMENT_ID, {
+      code: 'CHECKOUT_CANCELLED',
+      reason: 'Customer closed Razorpay Checkout.',
+    });
+
+    expect(gateway.fetchOrderPayments).toHaveBeenCalledWith('order_test');
+    expect(result.status).toBe(PaymentStatus.CANCELLED);
+    expect(result.failure).toEqual({
+      code: 'CHECKOUT_CANCELLED',
+      reason: 'Customer closed Razorpay Checkout.',
+    });
+    expect(result.failedAt).not.toBeNull();
+    expect(repository.saveInvoice).not.toHaveBeenCalled();
+    expect(repository.saveSession).not.toHaveBeenCalled();
+    expect(invoice().status).toBe(DineInInvoiceStatus.PAYMENT_PENDING);
+    expect(session().status).toBe(DineInSessionStatus.PAYMENT_PENDING);
+  });
+
+  it('returns a previously cancelled online payment idempotently', async () => {
+    repository.findForCustomer.mockResolvedValue(
+      payment({
+        method: PaymentMethod.CARD,
+        status: PaymentStatus.CANCELLED,
+      }),
+    );
+
+    const result = await service.cancel(customer(), PAYMENT_ID, {});
+
+    expect(result.status).toBe(PaymentStatus.CANCELLED);
+    expect(repository.transaction).not.toHaveBeenCalled();
+  });
+
+  it('reconciles a captured Razorpay payment instead of cancelling it', async () => {
+    const onlinePayment = payment({
+      method: PaymentMethod.CARD,
+      gateway: 'RAZORPAY',
+      gatewayOrderId: 'order_test',
+      status: PaymentStatus.PENDING,
+    });
+    repository.findForCustomer.mockResolvedValue(onlinePayment);
+    repository.lockPayment.mockResolvedValue(onlinePayment);
+    gateway.fetchOrderPayments.mockResolvedValue([
+      {
+        id: 'pay_captured',
+        order_id: 'order_test',
+        amount: 70250,
+        currency: 'INR',
+        status: 'captured',
+        captured: true,
+      },
+    ]);
+
+    const result = await service.cancel(customer(), PAYMENT_ID, {});
+
+    expect(result.status).toBe(PaymentStatus.SUCCESS);
+    expect(result.gatewayPaymentId).toBe('pay_captured');
+    expect(repository.saveInvoice).toHaveBeenCalledWith(
+      expect.objectContaining({ status: DineInInvoiceStatus.PAID }),
+      expect.anything(),
+    );
+  });
+
+  it('does not cancel an authorized Razorpay payment that needs reconciliation', async () => {
+    const onlinePayment = payment({
+      method: PaymentMethod.UPI,
+      gateway: 'RAZORPAY',
+      gatewayOrderId: 'order_test',
+      status: PaymentStatus.PENDING,
+    });
+    repository.findForCustomer.mockResolvedValue(onlinePayment);
+    gateway.fetchOrderPayments.mockResolvedValue([
+      {
+        id: 'pay_authorized',
+        order_id: 'order_test',
+        amount: 70250,
+        currency: 'INR',
+        status: 'authorized',
+        captured: false,
+      },
+    ]);
+
+    await expect(service.cancel(customer(), PAYMENT_ID, {})).rejects.toEqual(
+      expect.any(ConflictException),
+    );
+    expect(repository.save).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when Razorpay reconciliation is unavailable', async () => {
+    repository.findForCustomer.mockResolvedValue(
+      payment({
+        method: PaymentMethod.UPI,
+        gateway: 'RAZORPAY',
+        gatewayOrderId: 'order_test',
+        status: PaymentStatus.PENDING,
+      }),
+    );
+    gateway.fetchOrderPayments.mockRejectedValue(new Error('network'));
+
+    await expect(service.cancel(customer(), PAYMENT_ID, {})).rejects.toEqual(
+      expect.any(BadGatewayException),
+    );
+    expect(repository.save).not.toHaveBeenCalled();
+  });
+
+  it('does not let another table member cancel a payment they did not create', async () => {
+    repository.findForCustomer.mockResolvedValue(
+      payment({ userId: '90000000-0000-4000-8000-000000000001' }),
+    );
+
+    await expect(service.cancel(customer(), PAYMENT_ID, {})).rejects.toEqual(
+      expect.any(NotFoundException),
+    );
+    expect(repository.transaction).not.toHaveBeenCalled();
+  });
+
+  it('never cancels cash or a successful payment', async () => {
+    repository.findForCustomer.mockResolvedValue(payment());
+    await expect(service.cancel(customer(), PAYMENT_ID, {})).rejects.toEqual(
+      expect.any(ConflictException),
+    );
+
+    repository.findForCustomer.mockResolvedValue(
+      payment({
+        method: PaymentMethod.CARD,
+        status: PaymentStatus.SUCCESS,
+      }),
+    );
+    await expect(service.cancel(customer(), PAYMENT_ID, {})).rejects.toEqual(
+      expect.any(ConflictException),
+    );
   });
 
   it('rejects an invalid Razorpay callback signature without completing payment', async () => {
@@ -202,6 +352,8 @@ describe('DineInPaymentsService', () => {
     });
 
     expect(result.status).toBe(PaymentStatus.SUCCESS);
+    expect(result.gatewayPaymentId).toBe('pay_test');
+    expect(result.transactionReference).toBe('pay_test');
     expect(repository.saveInvoice).toHaveBeenCalledWith(
       expect.objectContaining({ status: DineInInvoiceStatus.PAID }),
       expect.anything(),
@@ -338,7 +490,11 @@ function invoice(overrides: Partial<DineInInvoice> = {}): DineInInvoice {
     currency: 'INR',
     itemCount: 2,
     orderCount: 1,
-    billingSnapshot: { orders: [] },
+    billingSnapshot: {
+      restaurantName: 'Green Garden Dine-In',
+      tableNumber: 'T13',
+      orders: [],
+    },
     requestedAt: new Date('2026-01-01T00:00:00.000Z'),
     confirmedAt: new Date('2026-01-01T00:01:00.000Z'),
     paidAt: null,

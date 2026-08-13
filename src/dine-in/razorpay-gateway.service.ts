@@ -61,6 +61,18 @@ export class RazorpayGatewayService {
     };
   }
 
+  async fetchOrderPayments(orderId: string): Promise<RazorpayGatewayPayment[]> {
+    const response = await this.client().orders.fetchPayments(orderId);
+    return response.items.map((payment) => ({
+      id: payment.id,
+      order_id: payment.order_id ?? null,
+      amount: Number(payment.amount),
+      currency: payment.currency,
+      status: payment.status,
+      captured: Boolean(payment.captured),
+    }));
+  }
+
   verifyCheckoutSignature(input: {
     orderId: string;
     paymentId: string;

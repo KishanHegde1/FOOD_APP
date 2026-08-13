@@ -220,7 +220,7 @@ export class DineInPaymentsRepository {
       .createQueryBuilder('payment')
       .where('payment.restaurant_id = :restaurantId', { restaurantId })
       .andWhere('payment.invoice_id IS NOT NULL');
-    this.applyFilters(builder, query);
+    this.applyFilters(builder, query, true);
     if (cashPendingOnly)
       builder.andWhere('payment.status = :cashPendingStatus', {
         cashPendingStatus: PaymentStatus.AWAITING_CASH_CONFIRMATION,
@@ -244,8 +244,21 @@ export class DineInPaymentsRepository {
   private applyFilters(
     builder: SelectQueryBuilder<DineInPayment>,
     query: DineInPaymentListQueryDto,
+    groupManagerProcessingStatuses = false,
   ): void {
-    if (query.status)
+    if (
+      query.status === PaymentStatus.PROCESSING &&
+      groupManagerProcessingStatuses
+    )
+      builder.andWhere('payment.status IN (:...processingStatuses)', {
+        processingStatuses: [
+          PaymentStatus.CREATED,
+          PaymentStatus.PENDING,
+          PaymentStatus.PROCESSING,
+          PaymentStatus.AUTHORIZED,
+        ],
+      });
+    else if (query.status)
       builder.andWhere('payment.status = :status', { status: query.status });
     if (query.method)
       builder.andWhere('payment.method = :method', { method: query.method });

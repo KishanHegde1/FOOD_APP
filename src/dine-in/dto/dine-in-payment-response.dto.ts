@@ -11,13 +11,33 @@ export class DineInPaymentResponseDto {
   @ApiProperty({ enum: PaymentStatus }) status!: PaymentStatus;
   @ApiProperty() amountPaise!: number;
   @ApiProperty() currency!: string;
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Payment gateway name. No gateway secret is returned.',
+  })
+  gateway!: string | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Razorpay order ID for an online payment attempt.',
+  })
+  gatewayOrderId!: string | null;
   @ApiPropertyOptional({ nullable: true }) transactionReference!: string | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Razorpay payment ID for a verified UPI/Card payment. Signatures are never returned.',
+  })
+  gatewayPaymentId!: string | null;
+  @ApiPropertyOptional({ nullable: true }) restaurantName!: string | null;
+  @ApiPropertyOptional({ nullable: true }) tableNumber!: string | null;
   @ApiPropertyOptional({ nullable: true }) failure!: {
     code: string | null;
     reason: string | null;
   } | null;
   @ApiProperty({ format: 'date-time' }) initiatedAt!: string;
   @ApiPropertyOptional({ format: 'date-time', nullable: true }) completedAt!:
+    string | null;
+  @ApiPropertyOptional({ format: 'date-time', nullable: true }) failedAt!:
     string | null;
   @ApiPropertyOptional({
     description: 'Safe Razorpay Standard Checkout fields for UPI/Card only.',

@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import { EntityManager } from 'typeorm';
 import { RestaurantsService } from '../restaurants/restaurants.service';
 import { User, UserRole } from '../users/entities/user.entity';
+import { CancelDineInPaymentDto } from './dto/cancel-dine-in-payment.dto';
 import { DineInPaymentListQueryDto } from './dto/dine-in-payment-list-query.dto';
 import {
   DineInPaymentResponseDto,
@@ -27,6 +28,7 @@ import { PaymentMethod, PaymentStatus } from './enums/order.enums';
 import { DineInPaymentsRepository } from './dine-in-payments.repository';
 import { DineInSessionMembersRepository } from './dine-in-session-members.repository';
 import { RazorpayGatewayService } from './razorpay-gateway.service';
+import type { RazorpayGatewayPayment } from './razorpay-gateway.service';
 
 export type RazorpayWebhookPayload = {
   event?: string;
@@ -81,7 +83,8 @@ export class DineInPaymentsService {
       });
       if (
         gatewayOrder.amount !== attempt.payment.amountPaise ||
-        gatewayOrder.currency !== attempt.payment.currency
+        gatewayOrder.currency.toUpperCase() !==
+          attempt.payment.currency.toUpperCase()
       ) {
         await this.failGatewayCreation(attempt.payment.id);
         throw new BadGatewayException('PAYMENT_AMOUNT_MISMATCH');
@@ -186,7 +189,8 @@ export class DineInPaymentsService {
     if (
       gatewayPayment.order_id !== payment.gatewayOrderId ||
       gatewayPayment.amount !== payment.amountPaise ||
-      gatewayPayment.currency !== payment.currency ||
+      gatewayPayment.currency.toUpperCase() !==
+        payment.currency.toUpperCase() ||
       !gatewayPayment.captured ||
       gatewayPayment.status !== 'captured'
     )
@@ -197,6 +201,130 @@ export class DineInPaymentsService {
       gatewaySignature: dto.gatewaySignature,
       transactionReference: gatewayPayment.id,
     });
+  }
+
+  async cancel(
+    user: User,
+    paymentId: string,
+    dto: CancelDineInPaymentDto,
+  ): Promise<DineInPaymentResponseDto> {
+    this.ensureCustomer(user);
+    const current = await this.paymentsRepository.findForCustomer(
+      paymentId,
+      user.id,
+    );
+    if (!current || current.userId !== user.id)
+      throw new NotFoundException('PAYMENT_NOT_FOUND');
+    if (
+      current.method !== PaymentMethod.UPI &&
+      current.method !== PaymentMethod.CARD
+    )
+      throw new ConflictException('PAYMENT_CANCELLATION_NOT_ALLOWED');
+    if (current.status === PaymentStatus.CANCELLED)
+      return this.toResponse(
+        current,
+        await this.requireInvoiceForPayment(current),
+      );
+    if (
+      ![
+        PaymentStatus.CREATED,
+        PaymentStatus.PENDING,
+        PaymentStatus.PROCESSING,
+        PaymentStatus.AUTHORIZED,
+      ].includes(current.status)
+    )
+      throw new ConflictException('PAYMENT_CANCELLATION_NOT_ALLOWED');
+
+    if (
+      !current.gatewayOrderId &&
+      [PaymentStatus.PENDING, PaymentStatus.AUTHORIZED].includes(current.status)
+    )
+      throw new ConflictException('PAYMENT_RECONCILIATION_REQUIRED');
+
+    if (current.gatewayOrderId) {
+      let gatewayPayments: RazorpayGatewayPayment[];
+      try {
+        gatewayPayments = await this.razorpayGateway.fetchOrderPayments(
+          current.gatewayOrderId,
+        );
+      } catch {
+        throw new BadGatewayException('PAYMENT_RECONCILIATION_FAILED');
+      }
+      const captured = gatewayPayments.find(
+        (payment) =>
+          payment.captured &&
+          payment.status === 'captured' &&
+          payment.order_id === current.gatewayOrderId &&
+          payment.amount === current.amountPaise &&
+          payment.currency.toUpperCase() === current.currency.toUpperCase(),
+      );
+      if (captured) {
+        return this.completeVerifiedPayment(current.id, {
+          gatewayPaymentId: captured.id,
+          transactionReference: captured.id,
+        });
+      }
+      if (
+        gatewayPayments.some(
+          (payment) =>
+            payment.status === 'authorized' ||
+            payment.status === 'captured' ||
+            payment.captured,
+        )
+      )
+        throw new ConflictException('PAYMENT_RECONCILIATION_REQUIRED');
+    }
+
+    const result = await this.paymentsRepository.transaction(
+      async (manager) => {
+        const payment = await this.requireLockedPayment(paymentId, manager);
+        if (payment.userId !== user.id)
+          throw new NotFoundException('PAYMENT_NOT_FOUND');
+        if (
+          payment.method !== PaymentMethod.UPI &&
+          payment.method !== PaymentMethod.CARD
+        )
+          throw new ConflictException('PAYMENT_CANCELLATION_NOT_ALLOWED');
+
+        const invoice = await this.requireLockedInvoiceForPayment(
+          payment,
+          manager,
+        );
+        if (payment.status === PaymentStatus.CANCELLED)
+          return { payment, invoice };
+        if (
+          ![
+            PaymentStatus.CREATED,
+            PaymentStatus.PENDING,
+            PaymentStatus.PROCESSING,
+            PaymentStatus.AUTHORIZED,
+          ].includes(payment.status)
+        )
+          throw new ConflictException('PAYMENT_CANCELLATION_NOT_ALLOWED');
+
+        const session = await this.requireLockedSession(
+          invoice.dineInSessionId,
+          manager,
+        );
+        this.ensureInvoiceSessionPair(invoice, session, payment);
+        if (
+          invoice.status !== DineInInvoiceStatus.PAYMENT_PENDING ||
+          session.status !== DineInSessionStatus.PAYMENT_PENDING
+        )
+          throw new ConflictException('PAYMENT_CANCELLATION_NOT_ALLOWED');
+
+        payment.status = PaymentStatus.CANCELLED;
+        payment.failureCode = dto.code ?? 'CUSTOMER_CANCELLED';
+        payment.failureReason =
+          dto.reason ?? 'Payment was cancelled by the customer.';
+        payment.failedAt = new Date();
+        return {
+          payment: await this.paymentsRepository.save(payment, manager),
+          invoice,
+        };
+      },
+    );
+    return this.toResponse(result.payment, result.invoice);
   }
 
   async confirmCash(
@@ -332,7 +460,8 @@ export class DineInPaymentsService {
     ) {
       if (
         entity.amount !== payment.amountPaise ||
-        entity.currency !== payment.currency ||
+        !entity.currency ||
+        entity.currency.toUpperCase() !== payment.currency.toUpperCase() ||
         entity.status !== 'captured' ||
         !entity.captured
       )
@@ -507,7 +636,12 @@ export class DineInPaymentsService {
   ): Promise<void> {
     await this.paymentsRepository.transaction(async (manager) => {
       const payment = await this.requireLockedPayment(paymentId, manager);
-      if (payment.status === PaymentStatus.SUCCESS) return;
+      if (
+        payment.status === PaymentStatus.SUCCESS ||
+        payment.status === PaymentStatus.PAID ||
+        payment.status === PaymentStatus.CANCELLED
+      )
+        return;
       payment.status = PaymentStatus.FAILED;
       payment.failureCode = code;
       payment.failureReason = reason;
@@ -556,13 +690,19 @@ export class DineInPaymentsService {
       status: payment.status,
       amountPaise: payment.amountPaise,
       currency: payment.currency,
+      gateway: payment.gateway,
+      gatewayOrderId: payment.gatewayOrderId,
       transactionReference: payment.transactionReference,
+      gatewayPaymentId: payment.gatewayPaymentId,
+      restaurantName: invoice.billingSnapshot.restaurantName ?? null,
+      tableNumber: invoice.billingSnapshot.tableNumber ?? null,
       failure:
         payment.failureCode || payment.failureReason
           ? { code: payment.failureCode, reason: payment.failureReason }
           : null,
       initiatedAt: (payment.initiatedAt ?? payment.createdAt).toISOString(),
       completedAt: payment.completedAt?.toISOString() ?? null,
+      failedAt: payment.failedAt?.toISOString() ?? null,
       ...(online
         ? {
             checkout: {
